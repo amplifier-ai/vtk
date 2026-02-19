@@ -37,6 +37,15 @@ namespace VTK.Test
             "vtkFileOutputWindow", "vtkOutputWindow",
         };
 
+        // Substrings that indicate rendering/OpenGL-dependent classes even if
+        // they match a safe prefix (e.g. vtkPolyDataMapper, vtkQuadricLODActor)
+        private static readonly string[] UnsafeSubstrings = new[]
+        {
+            "Mapper", "Actor", "Renderer", "Render", "Widget", "Representation",
+            "RayCast", "LIC", "LOD", "Silhouette", "Item", "Placer",
+            "HandleRepresentation", "Feedback", "MapperNode",
+        };
+
         public static int Run(string[] args)
         {
             try
@@ -78,7 +87,8 @@ namespace VTK.Test
                     // Only test known-safe classes to avoid native crashes from
                     // rendering/OpenGL-dependent classes when no display is present
                     bool isSafe = SafePrefixes.Any(p => type.Name.StartsWith(p));
-                    if (!isSafe)
+                    bool isUnsafe = UnsafeSubstrings.Any(s => type.Name.Contains(s));
+                    if (!isSafe || isUnsafe)
                     {
                         skipped++;
                         continue;
