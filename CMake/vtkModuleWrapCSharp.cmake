@@ -474,6 +474,7 @@ function (vtk_module_wrap_csharp)
   if (NOT _vtk_csharp_CSHARP_OUTPUT)
     set(_vtk_csharp_CSHARP_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/vtkCSharp")
   endif ()
+  file(MAKE_DIRECTORY "${_vtk_csharp_CSHARP_OUTPUT}")
 
   if (NOT _vtk_csharp_NATIVELIB_COMPONENT)
     set(_vtk_csharp_NATIVELIB_COMPONENT "csharp")

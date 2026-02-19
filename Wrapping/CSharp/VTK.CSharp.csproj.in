@@ -9,6 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="vtk/**/*.cs" />
+    <!-- Hand-written runtime classes -->
+    <Compile Include="runtime/**/*.cs" />
+    <!-- Generated wrapper classes -->
+    <Compile Include="generated/**/*.cs" />
+    <!-- Exclude generated vtkObjectBase.cs — we use the hand-written version -->
+    <Compile Remove="generated/vtkObjectBase.cs" />
   </ItemGroup>
 </Project>

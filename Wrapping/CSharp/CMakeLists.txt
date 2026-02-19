@@ -13,7 +13,7 @@ endif ()
 
 include(vtkModuleWrapCSharp)
 vtk_module_wrap_csharp(
-  CSHARP_OUTPUT     "${CMAKE_CURRENT_BINARY_DIR}/vtk"
+  CSHARP_OUTPUT     "${CMAKE_CURRENT_BINARY_DIR}/generated"
   MODULES           ${vtk_modules}
   WRAPPED_MODULES   vtk_csharp_wrapped_modules
   UTILITY_TARGET    "VTK::vtkbuild"
@@ -41,7 +41,7 @@ set(csharp_runtime_sources
 
 set(csharp_runtime_input_files)
 foreach (cs_file IN LISTS csharp_runtime_sources)
-  set(output_file "${CMAKE_CURRENT_BINARY_DIR}/${cs_file}")
+  set(output_file "${CMAKE_CURRENT_BINARY_DIR}/runtime/${cs_file}")
   get_filename_component(output_dir "${output_file}" DIRECTORY)
   file(MAKE_DIRECTORY "${output_dir}")
   add_custom_command(
@@ -59,10 +59,10 @@ endforeach ()
 set(VTK_CSHARP_NATIVE_LIB_DIR "${CMAKE_INSTALL_CSHARPLIBDIR}")
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/vtk/VtkNativeLibrary.cs.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/vtk/VtkNativeLibrary.cs"
+  "${CMAKE_CURRENT_BINARY_DIR}/runtime/vtk/VtkNativeLibrary.cs"
   @ONLY)
 list(APPEND csharp_runtime_input_files
-  "${CMAKE_CURRENT_BINARY_DIR}/vtk/VtkNativeLibrary.cs")
+  "${CMAKE_CURRENT_BINARY_DIR}/runtime/vtk/VtkNativeLibrary.cs")
 
 # Generate .csproj file
 set(VTK_CSHARP_PROJECT_DIR "${CMAKE_CURRENT_BINARY_DIR}")

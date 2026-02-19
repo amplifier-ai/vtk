@@ -928,6 +928,14 @@ int VTK_PARSE_MAIN(int argc, char* argv[])
     return vtkParse_FinalizeMain(0);
   }
 
+  /* Skip vtkObjectBase — use the hand-written managed base class instead */
+  if (strcmp(data->Name, "vtkObjectBase") == 0)
+  {
+    fprintf(fp, "namespace VTK { }\n");
+    fclose(fp);
+    return vtkParse_FinalizeMain(0);
+  }
+
   if (data->Template)
   {
     fprintf(fp, "namespace VTK { }\n");

@@ -488,18 +488,26 @@ static void OutputFunctionResult(FILE* fp)
       break;
     }
 
-    /* pointer return types: return directly */
+    /* pointer return types: cast to match extern "C" signature type */
     case VTK_PARSE_FLOAT_PTR:
     case VTK_PARSE_DOUBLE_PTR:
     case VTK_PARSE_INT_PTR:
     case VTK_PARSE_UNSIGNED_INT_PTR:
     case VTK_PARSE_SHORT_PTR:
     case VTK_PARSE_UNSIGNED_SHORT_PTR:
-    case VTK_PARSE_LONG_PTR:
-    case VTK_PARSE_UNSIGNED_LONG_PTR:
     case VTK_PARSE_LONG_LONG_PTR:
     case VTK_PARSE_UNSIGNED_LONG_LONG_PTR:
+      fprintf(fp, "  return temp%i;\n", MAX_ARGS);
+      break;
+    case VTK_PARSE_LONG_PTR:
+    case VTK_PARSE_UNSIGNED_LONG_PTR:
+      /* long may differ from long long on some platforms; cast to match signature */
+      fprintf(fp, "  return reinterpret_cast<long long*>(temp%i);\n", MAX_ARGS);
+      break;
     case VTK_PARSE_SIGNED_CHAR_PTR:
+      /* signed char* needs cast to unsigned char* to match extern C signature */
+      fprintf(fp, "  return reinterpret_cast<unsigned char*>(temp%i);\n", MAX_ARGS);
+      break;
     case VTK_PARSE_UNSIGNED_CHAR_PTR:
     case VTK_PARSE_BOOL_PTR:
       fprintf(fp, "  return temp%i;\n", MAX_ARGS);
@@ -1107,6 +1115,10 @@ int VTK_PARSE_MAIN(int argc, char* argv[])
   fprintf(fp, "#include \"vtkABI.h\"\n");
   fprintf(fp, "#include \"vtkSystemIncludes.h\"\n");
   fprintf(fp, "#include \"%s.h\"\n", data->Name);
+  if (!strcmp("vtkObject", data->Name))
+  {
+    fprintf(fp, "#include \"vtkCallbackCommand.h\"\n");
+  }
   fprintf(fp, "#include <cstring>\n");
   fprintf(fp, "#include <string>\n");
   fprintf(fp, "#include <sstream>\n\n");
