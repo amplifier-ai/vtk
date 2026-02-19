@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>VTK</RootNamespace>
+    <AssemblyName>VTK.CSharp</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Version>@VTK_MAJOR_VERSION@.@VTK_MINOR_VERSION@.@VTK_BUILD_VERSION@</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="vtk/**/*.cs" />
+  </ItemGroup>
+</Project>

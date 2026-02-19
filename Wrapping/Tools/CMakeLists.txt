@@ -144,6 +144,28 @@ if (NOT TARGET WrapJava)
     WrapJava)
 endif ()
 
+if (NOT TARGET WrapCSharp)
+  vtk_module_add_executable(ParseCSharp
+    DEVELOPMENT
+    BASENAME vtkParseCSharp
+    vtkParseCSharp.c)
+  target_link_libraries(ParseCSharp
+    PRIVATE
+      "${ns}::WrappingTools")
+  add_executable("${ns}::ParseCSharp" ALIAS
+    ParseCSharp)
+
+  vtk_module_add_executable(WrapCSharp
+    DEVELOPMENT
+    BASENAME vtkWrapCSharp
+    vtkWrapCSharp.c)
+  target_link_libraries(WrapCSharp
+    PRIVATE
+      "${ns}::WrappingTools")
+  add_executable("${ns}::WrapCSharp" ALIAS
+    WrapCSharp)
+endif ()
+
 if (NOT TARGET WrapSerDes)
   vtk_module_add_executable(WrapSerDes
     DEVELOPMENT

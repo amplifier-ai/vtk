@@ -1,0 +1,80 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// This file is configured by CMake. Do not edit manually.
+
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+
+namespace VTK
+{
+    public static class VtkNativeLibrary
+    {
+        private static bool resolverInstalled;
+
+        public static void Initialize()
+        {
+            if (resolverInstalled)
+            {
+                return;
+            }
+            resolverInstalled = true;
+            NativeLibrary.SetDllImportResolver(typeof(VtkNativeLibrary).Assembly, ResolveDllImport);
+        }
+
+        private static IntPtr ResolveDllImport(string libraryName, Assembly assembly,
+            DllImportSearchPath? searchPath)
+        {
+            // Try the default resolution first
+            if (NativeLibrary.TryLoad(libraryName, assembly, searchPath, out IntPtr handle))
+            {
+                return handle;
+            }
+
+            // Try with platform-specific prefixes/suffixes
+            string libPath = GetPlatformLibraryPath(libraryName);
+            if (libPath != null && NativeLibrary.TryLoad(libPath, out handle))
+            {
+                return handle;
+            }
+
+            // Try the configured VTK library directory
+            string vtkLibDir = "@VTK_CSHARP_NATIVE_LIB_DIR@";
+            if (!string.IsNullOrEmpty(vtkLibDir))
+            {
+                string fullPath = Path.Combine(vtkLibDir, GetPlatformLibraryName(libraryName));
+                if (NativeLibrary.TryLoad(fullPath, out handle))
+                {
+                    return handle;
+                }
+            }
+
+            return IntPtr.Zero;
+        }
+
+        private static string GetPlatformLibraryPath(string name)
+        {
+            string dir = Path.GetDirectoryName(typeof(VtkNativeLibrary).Assembly.Location);
+            if (string.IsNullOrEmpty(dir))
+            {
+                return null;
+            }
+            return Path.Combine(dir, GetPlatformLibraryName(name));
+        }
+
+        private static string GetPlatformLibraryName(string name)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return name + ".dll";
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                return "lib" + name + ".dylib";
+            }
+            return "lib" + name + ".so";
+        }
+    }
+}
