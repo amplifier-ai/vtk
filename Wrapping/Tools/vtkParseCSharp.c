@@ -109,8 +109,6 @@ static void OutputCSharpParamType(FILE* fp, int i)
       fprintf(fp, "bool id%i", i);
       break;
     case VTK_PARSE_CHAR:
-      fprintf(fp, "char id%i", i);
-      break;
     case VTK_PARSE_SIGNED_CHAR:
     case VTK_PARSE_UNSIGNED_CHAR:
       fprintf(fp, "byte id%i", i);
@@ -243,8 +241,6 @@ static void OutputCSharpReturnType(FILE* fp)
       fprintf(fp, "double");
       break;
     case VTK_PARSE_CHAR:
-      fprintf(fp, "char");
-      break;
     case VTK_PARSE_SIGNED_CHAR:
     case VTK_PARSE_UNSIGNED_CHAR:
       fprintf(fp, "byte");
@@ -763,8 +759,8 @@ static void outputFunction(FILE* fp, ClassInfo* data)
         fprintf(fp, ");\n");
         fprintf(fp, "        if (temp == IntPtr.Zero) return null;\n");
         fprintf(
-          fp, "        return (%s)vtkObjectBase.OBJECT_MANAGER.GetOrCreate(temp, typeof(%s));\n",
-          thisFunction->ReturnClass, thisFunction->ReturnClass);
+          fp, "        return vtkObjectBase.OBJECT_MANAGER.GetOrCreate<%s>(temp);\n",
+          thisFunction->ReturnClass);
       }
       else if (rType == VTK_PARSE_CHAR_PTR || rType == VTK_PARSE_STRING ||
         rType == VTK_PARSE_STRING_REF)
@@ -1101,7 +1097,7 @@ int VTK_PARSE_MAIN(int argc, char* argv[])
     }
     else
     {
-      fprintf(fp, "\n        protected %s() : base() { }\n", data->Name);
+      fprintf(fp, "\n        protected %s() : base(IntPtr.Zero, false) { }\n", data->Name);
     }
     fprintf(fp, "        internal %s(IntPtr ptr, bool ownsRef) : base(ptr, ownsRef) { }\n",
       data->Name);

@@ -145,6 +145,7 @@ static void OutputParamType(FILE* fp, int i)
 static void OutputReturnType(FILE* fp)
 {
   unsigned int rType = (thisFunction->ReturnType & VTK_PARSE_UNQUALIFIED_TYPE);
+  int isConst = ((thisFunction->ReturnType & VTK_PARSE_CONST) != 0);
 
   switch (rType)
   {
@@ -192,33 +193,33 @@ static void OutputReturnType(FILE* fp)
     case VTK_PARSE_STRING_REF:
       fprintf(fp, "const char*");
       break;
-    /* pointer return types */
+    /* pointer return types — preserve const qualifier */
     case VTK_PARSE_FLOAT_PTR:
-      fprintf(fp, "float*");
+      fprintf(fp, "%sfloat*", isConst ? "const " : "");
       break;
     case VTK_PARSE_DOUBLE_PTR:
-      fprintf(fp, "double*");
+      fprintf(fp, "%sdouble*", isConst ? "const " : "");
       break;
     case VTK_PARSE_INT_PTR:
     case VTK_PARSE_UNSIGNED_INT_PTR:
-      fprintf(fp, "int*");
+      fprintf(fp, "%sint*", isConst ? "const " : "");
       break;
     case VTK_PARSE_SHORT_PTR:
     case VTK_PARSE_UNSIGNED_SHORT_PTR:
-      fprintf(fp, "short*");
+      fprintf(fp, "%sshort*", isConst ? "const " : "");
       break;
     case VTK_PARSE_LONG_PTR:
     case VTK_PARSE_LONG_LONG_PTR:
     case VTK_PARSE_UNSIGNED_LONG_PTR:
     case VTK_PARSE_UNSIGNED_LONG_LONG_PTR:
-      fprintf(fp, "long long*");
+      fprintf(fp, "%slong long*", isConst ? "const " : "");
       break;
     case VTK_PARSE_SIGNED_CHAR_PTR:
     case VTK_PARSE_UNSIGNED_CHAR_PTR:
-      fprintf(fp, "unsigned char*");
+      fprintf(fp, "%sunsigned char*", isConst ? "const " : "");
       break;
     case VTK_PARSE_BOOL_PTR:
-      fprintf(fp, "int*");
+      fprintf(fp, "%sint*", isConst ? "const " : "");
       break;
     default:
       fprintf(fp, "int");
@@ -456,7 +457,14 @@ static void OutputFunctionResult(FILE* fp)
   switch (rType)
   {
     case VTK_PARSE_OBJECT_PTR:
-      fprintf(fp, "  return static_cast<void*>(temp%i);\n", MAX_ARGS);
+      if ((thisFunction->ReturnType & VTK_PARSE_CONST) != 0)
+      {
+        fprintf(fp, "  return const_cast<void*>(static_cast<const void*>(temp%i));\n", MAX_ARGS);
+      }
+      else
+      {
+        fprintf(fp, "  return static_cast<void*>(temp%i);\n", MAX_ARGS);
+      }
       break;
 
     case VTK_PARSE_STRING:
@@ -1119,6 +1127,7 @@ int VTK_PARSE_MAIN(int argc, char* argv[])
   {
     fprintf(fp, "#include \"vtkCallbackCommand.h\"\n");
   }
+  fprintf(fp, "#include \"vtkStdString.h\"\n");
   fprintf(fp, "#include <cstring>\n");
   fprintf(fp, "#include <string>\n");
   fprintf(fp, "#include <sstream>\n\n");

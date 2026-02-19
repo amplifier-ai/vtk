@@ -14,7 +14,7 @@ namespace VTK.Test
     {
         private static volatile bool failed = false;
 
-        public static int Main(string[] args)
+        public static int Run(string[] args)
         {
             try
             {

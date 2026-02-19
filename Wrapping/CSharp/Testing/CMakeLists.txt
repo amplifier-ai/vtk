@@ -8,6 +8,9 @@ set(csharp_test_names
   CSharpConcurrencyGC
   CSharpBindingCoverage)
 
+set(csharp_test_extra_sources
+  Program)
+
 # Configure test project
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/VTK.CSharp.Tests.csproj.in"
@@ -16,7 +19,7 @@ configure_file(
 
 # Copy test source files
 set(csharp_test_files)
-foreach (test_name IN LISTS csharp_test_names)
+foreach (test_name IN LISTS csharp_test_names csharp_test_extra_sources)
   set(output_file "${CMAKE_CURRENT_BINARY_DIR}/${test_name}.cs")
   add_custom_command(
     OUTPUT  "${output_file}"

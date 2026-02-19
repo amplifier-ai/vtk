@@ -8,7 +8,7 @@ namespace VTK
 {
     public class vtkObjectBase : IDisposable
     {
-        internal static readonly VtkObjectManager OBJECT_MANAGER = new VtkObjectManager();
+        public static readonly VtkObjectManager OBJECT_MANAGER = new VtkObjectManager();
 
         private const string UtilLib = "vtkCSharp";
 

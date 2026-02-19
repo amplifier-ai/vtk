@@ -14,6 +14,16 @@ namespace VTK
     {
         private static bool resolverInstalled;
 
+        // VTK version suffix for library names (e.g. "-9.6")
+        private const string VersionSuffix = "@VTK_CSHARP_VERSION_SUFFIX@";
+
+        // Build-tree library directories (absolute paths set by CMake)
+        private const string BuildLibDir = "@VTK_CSHARP_BUILD_LIB_DIR@";
+        private const string BuildNativeLibDir = "@VTK_CSHARP_BUILD_NATIVELIB_DIR@";
+
+        // Install-tree relative directory
+        private const string InstallNativeLibDir = "@VTK_CSHARP_NATIVE_LIB_DIR@";
+
         public static void Initialize()
         {
             if (resolverInstalled)
@@ -33,35 +43,49 @@ namespace VTK
                 return handle;
             }
 
-            // Try with platform-specific prefixes/suffixes
-            string libPath = GetPlatformLibraryPath(libraryName);
-            if (libPath != null && NativeLibrary.TryLoad(libPath, out handle))
+            // Collect candidate names: unversioned and versioned
+            string[] candidates = new[]
             {
-                return handle;
-            }
+                libraryName,
+                libraryName + VersionSuffix
+            };
 
-            // Try the configured VTK library directory
-            string vtkLibDir = "@VTK_CSHARP_NATIVE_LIB_DIR@";
-            if (!string.IsNullOrEmpty(vtkLibDir))
+            // Collect candidate directories
+            string assemblyDir = Path.GetDirectoryName(assembly.Location) ?? "";
+            string[] searchDirs = new[]
             {
-                string fullPath = Path.Combine(vtkLibDir, GetPlatformLibraryName(libraryName));
-                if (NativeLibrary.TryLoad(fullPath, out handle))
+                BuildLibDir,
+                BuildNativeLibDir,
+                assemblyDir,
+                Path.Combine(assemblyDir, InstallNativeLibDir)
+            };
+
+            foreach (string name in candidates)
+            {
+                string platformName = GetPlatformLibraryName(name);
+
+                // Try each search directory
+                foreach (string dir in searchDirs)
+                {
+                    if (string.IsNullOrEmpty(dir))
+                    {
+                        continue;
+                    }
+                    string fullPath = Path.Combine(dir, platformName);
+                    if (NativeLibrary.TryLoad(fullPath, out handle))
+                    {
+                        return handle;
+                    }
+                }
+
+                // Try system search with platform name
+                if (NativeLibrary.TryLoad(platformName, assembly, searchPath, out handle))
                 {
                     return handle;
                 }
             }
 
             return IntPtr.Zero;
-        }
-
-        private static string GetPlatformLibraryPath(string name)
-        {
-            string dir = Path.GetDirectoryName(typeof(VtkNativeLibrary).Assembly.Location);
-            if (string.IsNullOrEmpty(dir))
-            {
-                return null;
-            }
-            return Path.Combine(dir, GetPlatformLibraryName(name));
         }
 
         private static string GetPlatformLibraryName(string name)
