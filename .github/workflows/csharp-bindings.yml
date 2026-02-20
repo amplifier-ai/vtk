@@ -10,7 +10,7 @@ on:
 env:
   VTK_VERSION: "9.6"
   DOTNET_VERSION: "8.0"
-  CMAKE_BUILD_PARALLEL_LEVEL: 4
+  CMAKE_BUILD_PARALLEL_LEVEL: 8
   CCACHE_MAXSIZE: 2G
   CCACHE_DIR: ${{ github.workspace }}/.ccache
 
@@ -20,10 +20,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-latest-l
             platform: win-x64
             artifact_ext: dll
-          - os: macos-14
+          - os: macos-14-xlarge
             platform: osx-arm64
             artifact_ext: dylib
 
@@ -123,6 +123,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVTK_WRAP_CSHARP=ON `
             -DVTK_BUILD_TESTING=ON `
+            -DVTK_DATA_EXCLUDE_FROM_ALL=ON `
             -DVTK_MODULE_ENABLE_VTK_RenderingOpenXR=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingOpenXRRemoting=NO `
             -DVTK_MODULE_ENABLE_VTK_RenderingVR=YES `
@@ -153,6 +154,7 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DVTK_WRAP_CSHARP=ON \
             -DVTK_BUILD_TESTING=ON \
+            -DVTK_DATA_EXCLUDE_FROM_ALL=ON \
             -DVTK_MODULE_ENABLE_VTK_IOFFMPEG=YES \
             -DVTK_MODULE_ENABLE_VTK_RenderingFFMPEGOpenGL2=YES \
             -DVTK_MODULE_ENABLE_VTK_IOGeoJSON=YES \
