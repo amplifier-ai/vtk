@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest-l
+          - os: windows-latest
             platform: win-x64
             artifact_ext: dll
           - os: macos-14-xlarge
@@ -28,6 +28,7 @@ jobs:
             artifact_ext: dylib
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
     name: Build (${{ matrix.platform }})
 
     steps:
