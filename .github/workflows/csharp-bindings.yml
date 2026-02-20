@@ -7,11 +7,14 @@ on:
     branches: [master]
   release:
     types: [published]
+  workflow_dispatch:
 
 env:
   VTK_VERSION: "9.6"
   DOTNET_VERSION: "8.0"
   CMAKE_BUILD_PARALLEL_LEVEL: 4
+  CCACHE_MAXSIZE: 2G
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
 
 jobs:
   build:
@@ -21,11 +24,9 @@ jobs:
         include:
           - os: windows-latest
             platform: win-x64
-            cmake_generator: Ninja
             artifact_ext: dll
           - os: macos-14
             platform: osx-arm64
-            cmake_generator: Ninja
             artifact_ext: dylib
 
     runs-on: ${{ matrix.os }}
@@ -44,6 +45,51 @@ jobs:
 
       - name: Setup Ninja
         uses: seanmiddleditch/gha-setup-ninja@master
+
+      # ── Caching ──
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ matrix.platform }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ matrix.platform }}-
+
+      - name: Setup ccache (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ccache
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+
+      - name: Setup ccache (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install ccache -y
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $env:GITHUB_ENV
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $env:GITHUB_ENV
+
+      - name: Cache vcpkg (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
+            ${{ env.VCPKG_INSTALLATION_ROOT }}/packages
+          key: vcpkg-win-x64-${{ hashFiles('.github/workflows/csharp-bindings.yml') }}
+          restore-keys: |
+            vcpkg-win-x64-
+
+      - name: Cache Homebrew (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+          key: brew-osx-arm64-${{ hashFiles('.github/workflows/csharp-bindings.yml') }}
+          restore-keys: |
+            brew-osx-arm64-
 
       # ── Windows dependencies ──
       - name: Setup MSVC (Windows)
@@ -68,12 +114,12 @@ jobs:
       # ── CMake Configure ──
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        env:
-          VCPKG_ROOT: ${{ env.VCPKG_INSTALLATION_ROOT }}
         run: |
           cmake -G Ninja -B build `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVTK_WRAP_CSHARP=ON `
             -DVTK_BUILD_TESTING=ON `
             -DVTK_MODULE_ENABLE_VTK_RenderingOpenXR=YES `
@@ -112,6 +158,8 @@ jobs:
         run: |
           cmake -G Ninja -B build \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DVTK_WRAP_CSHARP=ON \
             -DVTK_BUILD_TESTING=ON \
             -DVTK_MODULE_ENABLE_VTK_RenderingRayTracing=WANT \
@@ -145,6 +193,9 @@ jobs:
       # ── Build ──
       - name: Build
         run: cmake --build build --config Release
+
+      - name: Print ccache stats
+        run: ccache -s
 
       # ── Test ──
       - name: Run C# tests
