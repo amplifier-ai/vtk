@@ -292,7 +292,7 @@ Testing: Rendering
 | Module | Description | Dependency | Platforms |
 |--------|-------------|------------|-----------|
 | **FiltersReebGraph** | Compute Reeb graphs for topological analysis of scalar fields. Identifies connected components, loops, and topological features in meshes | none | Win/Linux/macOS |
-| **FiltersONNX** | Run ONNX neural network models inside VTK pipelines. Apply ML inference (segmentation, classification) directly on VTK datasets | ONNX Runtime 1.14+ | Win/Linux |
+| **FiltersONNX** | Run ONNX neural network models inside VTK pipelines. Apply ML inference (segmentation, classification) directly on VTK datasets | ONNX Runtime 1.14+ | Win/Linux/macOS |
 | **InfovisBoostGraphAlgorithms** | Graph algorithms from Boost Graph Library: shortest paths (Dijkstra), spanning trees (Prim/Kruskal), connected components, centrality, page rank. Useful for vascular tree analysis and network visualization | Boost 1.74+ | Win/Linux/macOS |
 
 #### Serialization / Export / Misc
