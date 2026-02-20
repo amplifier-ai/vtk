@@ -32,8 +32,21 @@ foreach (test_name IN LISTS csharp_test_names csharp_test_extra_sources)
   list(APPEND csharp_test_files "${output_file}")
 endforeach ()
 
+# Build the test project (produces the executable that --no-build expects)
+set(_vtk_csharp_test_stamp "${CMAKE_CURRENT_BINARY_DIR}/.test_build_stamp")
+add_custom_command(
+  OUTPUT  "${_vtk_csharp_test_stamp}"
+  DEPENDS ${csharp_test_files}
+          "${CMAKE_CURRENT_BINARY_DIR}/VTK.CSharp.Tests.csproj"
+  COMMAND "${DOTNET_EXECUTABLE}" build
+          "${CMAKE_CURRENT_BINARY_DIR}/VTK.CSharp.Tests.csproj"
+  COMMAND "${CMAKE_COMMAND}" -E touch "${_vtk_csharp_test_stamp}"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  COMMENT "Building C# test project")
+
 add_custom_target(VTKCSharpTests ALL
-  DEPENDS ${csharp_test_files} VTKCSharpAssembly)
+  DEPENDS "${_vtk_csharp_test_stamp}")
+add_dependencies(VTKCSharpTests VTKCSharpAssembly)
 
 # Set up native library path for tests
 if (WIN32)
