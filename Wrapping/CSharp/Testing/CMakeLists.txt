@@ -6,7 +6,8 @@ set(csharp_test_names
   CSharpDelete
   CSharpGCAndDelete
   CSharpConcurrencyGC
-  CSharpBindingCoverage)
+  CSharpBindingCoverage
+  CSharpRegression)
 
 set(csharp_test_extra_sources
   Program)

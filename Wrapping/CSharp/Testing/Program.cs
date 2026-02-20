@@ -14,7 +14,7 @@ namespace VTK.Test
             if (args.Length < 1)
             {
                 Console.Error.WriteLine("Usage: VTK.CSharp.Tests <TestName>");
-                Console.Error.WriteLine("Available tests: CSharpDelete, CSharpGCAndDelete, CSharpConcurrencyGC, CSharpBindingCoverage");
+                Console.Error.WriteLine("Available tests: CSharpDelete, CSharpGCAndDelete, CSharpConcurrencyGC, CSharpBindingCoverage, CSharpRegression");
                 return 1;
             }
 
@@ -27,6 +27,7 @@ namespace VTK.Test
                 "CSharpGCAndDelete" => CSharpGCAndDelete.Run(testArgs),
                 "CSharpConcurrencyGC" => CSharpConcurrencyGC.Run(testArgs),
                 "CSharpBindingCoverage" => CSharpBindingCoverage.Run(testArgs),
+                "CSharpRegression" => CSharpRegression.Run(testArgs),
                 _ => Error($"Unknown test: {testName}")
             };
         }
