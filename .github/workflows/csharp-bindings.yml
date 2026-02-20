@@ -202,8 +202,8 @@ jobs:
           # VTK core native libraries (needed at runtime)
           Copy-Item build/bin/Release/vtk*.dll artifacts/native/ -ErrorAction SilentlyContinue
 
-          # Managed assembly
-          Copy-Item build/Wrapping/CSharp/bin/Release/net*/VTK.CSharp.dll artifacts/managed/
+          # Managed assembly (dotnet build -o places it in lib/)
+          Copy-Item build/lib/VTK.CSharp.dll artifacts/managed/
 
           # Summary
           Write-Host "Native libraries: $((Get-ChildItem artifacts/native/*.dll).Count)"
@@ -221,8 +221,8 @@ jobs:
           # VTK core native libraries (needed at runtime)
           cp build/lib/libvtk*.dylib artifacts/native/ 2>/dev/null || true
 
-          # Managed assembly
-          cp build/Wrapping/CSharp/bin/Release/net*/VTK.CSharp.dll artifacts/managed/
+          # Managed assembly (dotnet build -o places it in lib/)
+          cp build/lib/VTK.CSharp.dll artifacts/managed/
 
           # Summary
           echo "Native libraries: $(ls artifacts/native/*.dylib 2>/dev/null | wc -l)"
