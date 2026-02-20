@@ -1,8 +1,6 @@
 name: C# Bindings
 
 on:
-  push:
-    branches: [feature/csharp-bindings]
   pull_request:
     branches: [master]
   release:
@@ -125,26 +123,16 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_RenderingOpenXR=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingOpenXRRemoting=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingVR=YES `
-            -DVTK_MODULE_ENABLE_VTK_RenderingRayTracing=WANT `
-            -DVTK_MODULE_ENABLE_VTK_RenderingAnari=WANT `
             -DVTK_MODULE_ENABLE_VTK_IOFFMPEG=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingFFMPEGOpenGL2=YES `
-            -DVTK_MODULE_ENABLE_VTK_IOGDAL=WANT `
-            -DVTK_MODULE_ENABLE_VTK_GeovisGDAL=WANT `
             -DVTK_MODULE_ENABLE_VTK_IOGeoJSON=YES `
             -DVTK_MODULE_ENABLE_VTK_IOLAS=YES `
-            -DVTK_MODULE_ENABLE_VTK_IOOCCT=WANT `
-            -DVTK_MODULE_ENABLE_VTK_IOAlembic=WANT `
-            -DVTK_MODULE_ENABLE_VTK_IOUSD=WANT `
-            -DVTK_MODULE_ENABLE_VTK_IOOpenVDB=WANT `
             -DVTK_MODULE_ENABLE_VTK_IOH5part=YES `
             -DVTK_MODULE_ENABLE_VTK_IOXdmf3=YES `
             -DVTK_MODULE_ENABLE_VTK_ImagingOpenGL2=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingVolumeAMR=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingExternal=YES `
-            -DVTK_MODULE_ENABLE_VTK_RenderingWebGPU=WANT `
             -DVTK_MODULE_ENABLE_VTK_FiltersReebGraph=YES `
-            -DVTK_MODULE_ENABLE_VTK_FiltersONNX=WANT `
             -DVTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms=YES `
             -DVTK_MODULE_ENABLE_VTK_SerializationManager=YES `
             -DVTK_MODULE_ENABLE_VTK_CommonArchive=YES `
@@ -162,26 +150,17 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DVTK_WRAP_CSHARP=ON \
             -DVTK_BUILD_TESTING=ON \
-            -DVTK_MODULE_ENABLE_VTK_RenderingRayTracing=WANT \
-            -DVTK_MODULE_ENABLE_VTK_RenderingAnari=WANT \
             -DVTK_MODULE_ENABLE_VTK_IOFFMPEG=YES \
             -DVTK_MODULE_ENABLE_VTK_RenderingFFMPEGOpenGL2=YES \
-            -DVTK_MODULE_ENABLE_VTK_IOGDAL=WANT \
-            -DVTK_MODULE_ENABLE_VTK_GeovisGDAL=WANT \
             -DVTK_MODULE_ENABLE_VTK_IOGeoJSON=YES \
             -DVTK_MODULE_ENABLE_VTK_IOLAS=YES \
-            -DVTK_MODULE_ENABLE_VTK_IOOCCT=WANT \
-            -DVTK_MODULE_ENABLE_VTK_IOAlembic=WANT \
-            -DVTK_MODULE_ENABLE_VTK_IOUSD=WANT \
-            -DVTK_MODULE_ENABLE_VTK_IOOpenVDB=WANT \
             -DVTK_MODULE_ENABLE_VTK_IOH5part=YES \
             -DVTK_MODULE_ENABLE_VTK_IOXdmf3=YES \
             -DVTK_MODULE_ENABLE_VTK_ImagingOpenGL2=YES \
             -DVTK_MODULE_ENABLE_VTK_RenderingVolumeAMR=YES \
             -DVTK_MODULE_ENABLE_VTK_RenderingExternal=YES \
-            -DVTK_MODULE_ENABLE_VTK_RenderingWebGPU=WANT \
             -DVTK_MODULE_ENABLE_VTK_FiltersReebGraph=YES \
-            -DVTK_MODULE_ENABLE_VTK_FiltersONNX=WANT \
+            -DVTK_MODULE_ENABLE_VTK_FiltersONNX=YES \
             -DVTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms=YES \
             -DVTK_MODULE_ENABLE_VTK_SerializationManager=YES \
             -DVTK_MODULE_ENABLE_VTK_CommonArchive=YES \
