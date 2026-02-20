@@ -103,8 +103,7 @@ jobs:
             ffmpeg `
             boost-graph boost-assign boost-algorithm boost-tokenizer boost-variant boost-smart-ptr `
             hdf5 `
-            libarchive `
-            freeglut
+            libarchive
 
       # ── macOS dependencies ──
       - name: Install dependencies (macOS)
@@ -136,7 +135,7 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_IOXdmf3=YES `
             -DVTK_MODULE_ENABLE_VTK_ImagingOpenGL2=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingVolumeAMR=YES `
-            -DVTK_MODULE_ENABLE_VTK_RenderingExternal=YES `
+            -DVTK_MODULE_ENABLE_VTK_RenderingExternal=NO `
             -DVTK_MODULE_ENABLE_VTK_FiltersReebGraph=YES `
             -DVTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms=YES `
             -DVTK_MODULE_ENABLE_VTK_SerializationManager=YES `
