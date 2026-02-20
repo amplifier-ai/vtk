@@ -100,7 +100,7 @@ jobs:
           vcpkg install --triplet x64-windows `
             openxr-loader `
             ffmpeg `
-            boost-graph `
+            boost-graph boost-assign boost-algorithm boost-tokenizer boost-variant boost-smart-ptr `
             hdf5 `
             libarchive `
             freeglut
