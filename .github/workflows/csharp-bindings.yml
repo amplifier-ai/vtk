@@ -101,13 +101,15 @@ jobs:
             openxr-loader `
             ffmpeg `
             boost-graph `
-            hdf5
+            hdf5 `
+            libarchive
 
       # ── macOS dependencies ──
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install ffmpeg hdf5 boost onnxruntime
+          brew install ffmpeg hdf5 boost onnxruntime libarchive
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix libarchive)" >> "$GITHUB_ENV"
 
       # ── CMake Configure ──
       - name: Configure (Windows)
