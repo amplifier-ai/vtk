@@ -40,6 +40,7 @@ add_custom_command(
           "${CMAKE_CURRENT_BINARY_DIR}/VTK.CSharp.Tests.csproj"
   COMMAND "${DOTNET_EXECUTABLE}" build
           "${CMAKE_CURRENT_BINARY_DIR}/VTK.CSharp.Tests.csproj"
+          -c $<CONFIG>
   COMMAND "${CMAKE_COMMAND}" -E touch "${_vtk_csharp_test_stamp}"
   WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
   COMMENT "Building C# test project")
@@ -66,6 +67,7 @@ foreach (test_name IN LISTS csharp_test_names)
     COMMAND "${DOTNET_EXECUTABLE}" run
             --project "${CMAKE_CURRENT_BINARY_DIR}/VTK.CSharp.Tests.csproj"
             --no-build
+            -c $<CONFIG>
             -- "${test_name}"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
   set_property(TEST "vtkCSharpTests-${test_name}" APPEND
