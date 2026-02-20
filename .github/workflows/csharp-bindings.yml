@@ -121,7 +121,7 @@ jobs:
             -DVTK_WRAP_CSHARP=ON `
             -DVTK_BUILD_TESTING=ON `
             -DVTK_MODULE_ENABLE_VTK_RenderingOpenXR=YES `
-            -DVTK_MODULE_ENABLE_VTK_RenderingOpenXRRemoting=YES `
+            -DVTK_MODULE_ENABLE_VTK_RenderingOpenXRRemoting=NO `
             -DVTK_MODULE_ENABLE_VTK_RenderingVR=YES `
             -DVTK_MODULE_ENABLE_VTK_IOFFMPEG=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingFFMPEGOpenGL2=YES `
@@ -136,7 +136,7 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms=YES `
             -DVTK_MODULE_ENABLE_VTK_SerializationManager=YES `
             -DVTK_MODULE_ENABLE_VTK_CommonArchive=YES `
-            -DVTK_MODULE_ENABLE_VTK_DomainsMicroscopy=YES `
+            -DVTK_MODULE_ENABLE_VTK_DomainsMicroscopy=NO `
             -DVTK_MODULE_ENABLE_VTK_IOOMF=YES `
             -DVTK_MODULE_ENABLE_VTK_WebGLExporter=YES `
             -DVTK_MODULE_ENABLE_VTK_TestingSerialization=YES
@@ -164,7 +164,7 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms=YES \
             -DVTK_MODULE_ENABLE_VTK_SerializationManager=YES \
             -DVTK_MODULE_ENABLE_VTK_CommonArchive=YES \
-            -DVTK_MODULE_ENABLE_VTK_DomainsMicroscopy=YES \
+            -DVTK_MODULE_ENABLE_VTK_DomainsMicroscopy=NO \
             -DVTK_MODULE_ENABLE_VTK_IOOMF=YES \
             -DVTK_MODULE_ENABLE_VTK_WebGLExporter=YES \
             -DVTK_MODULE_ENABLE_VTK_TestingSerialization=YES
