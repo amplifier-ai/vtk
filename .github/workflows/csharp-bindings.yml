@@ -195,10 +195,12 @@ jobs:
 
           # Native CSharp libraries
           Copy-Item build/bin/Release/*CSharp*.dll artifacts/native/ -ErrorAction SilentlyContinue
+          Copy-Item build/bin/*CSharp*.dll artifacts/native/ -ErrorAction SilentlyContinue
           Copy-Item build/lib/csharp/*CSharp*.dll artifacts/native/ -ErrorAction SilentlyContinue
 
           # VTK core native libraries (needed at runtime)
           Copy-Item build/bin/Release/vtk*.dll artifacts/native/ -ErrorAction SilentlyContinue
+          Copy-Item build/bin/vtk*.dll artifacts/native/ -ErrorAction SilentlyContinue
 
           # Managed assembly (dotnet build -o places it in lib/)
           Copy-Item build/lib/VTK.CSharp.dll artifacts/managed/
