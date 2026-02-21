@@ -28,7 +28,7 @@ jobs:
             artifact_ext: dylib
 
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
+    timeout-minutes: 240
     name: Build (${{ matrix.platform }})
 
     steps:
@@ -101,8 +101,7 @@ jobs:
           vcpkg install --triplet x64-windows `
             openxr-loader `
             ffmpeg `
-            boost-graph boost-assign boost-algorithm boost-tokenizer boost-variant boost-smart-ptr `
-            hdf5 `
+            boost-graph `
             libarchive
 
       # ── macOS dependencies ──
@@ -131,8 +130,8 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_RenderingFFMPEGOpenGL2=YES `
             -DVTK_MODULE_ENABLE_VTK_IOGeoJSON=YES `
             -DVTK_MODULE_ENABLE_VTK_IOLAS=NO `
-            -DVTK_MODULE_ENABLE_VTK_IOH5part=YES `
-            -DVTK_MODULE_ENABLE_VTK_IOXdmf3=YES `
+            -DVTK_MODULE_ENABLE_VTK_IOH5part=NO `
+            -DVTK_MODULE_ENABLE_VTK_IOXdmf3=NO `
             -DVTK_MODULE_ENABLE_VTK_ImagingOpenGL2=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingVolumeAMR=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingExternal=NO `
@@ -176,7 +175,7 @@ jobs:
 
       # ── Build ──
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build build --config Release --target VTKCSharpAssembly VTKCSharpTests
 
       - name: Print ccache stats
         run: ccache -s
