@@ -20,8 +20,9 @@ vtk_module_wrap_csharp(
   LIBRARY_DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   NATIVELIB_DESTINATION  "${CMAKE_INSTALL_CSHARPLIBDIR}")
 
-# Collect all generated .cs files from wrapped modules
+# Collect all generated .cs files and native library targets from wrapped modules
 set(vtk_csharp_all_cs_files)
+set(vtk_csharp_native_targets)
 foreach (_vtk_csharp_module IN LISTS vtk_csharp_wrapped_modules)
   get_property(_vtk_csharp_library_name GLOBAL
     PROPERTY "_vtk_module_${_vtk_csharp_module}_library_name")
@@ -30,6 +31,8 @@ foreach (_vtk_csharp_module IN LISTS vtk_csharp_wrapped_modules)
     PROPERTY  "_vtk_module_csharp_files")
   list(APPEND vtk_csharp_all_cs_files
     ${_vtk_module_cs_files})
+  list(APPEND vtk_csharp_native_targets
+    "${_vtk_csharp_library_name}CSharp")
 endforeach ()
 
 # Copy hand-written runtime .cs files to the build directory
@@ -92,6 +95,7 @@ if (DOTNET_EXECUTABLE)
     WORKING_DIRECTORY "${VTK_CSHARP_PROJECT_DIR}"
     COMMENT "Building VTK C# assembly"
     DEPENDS vtk_csharp_sources)
+  add_dependencies(VTKCSharpAssembly ${vtk_csharp_native_targets})
 
   if (CMAKE_INSTALL_CSHARPLIBDIR)
     install(
