@@ -110,6 +110,25 @@ else ()
     "Install .NET SDK to enable C# assembly generation.")
 endif ()
 
+# Build native C# helper library (OpenGL warmup + pixel readback)
+add_library(vtkCSharpHelper SHARED vtkCSharpHelper.cxx)
+target_link_libraries(vtkCSharpHelper PRIVATE
+  VTK::RenderingOpenGL2
+  VTK::RenderingCore
+  VTK::IOImage)
+vtk_module_autoinit(TARGETS vtkCSharpHelper MODULES
+  VTK::RenderingOpenGL2
+  VTK::RenderingCore
+  VTK::IOImage)
+set_target_properties(vtkCSharpHelper PROPERTIES
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_CSHARPLIBDIR}"
+  INSTALL_RPATH "@loader_path/..")
+if (CMAKE_INSTALL_CSHARPLIBDIR)
+  install(TARGETS vtkCSharpHelper
+    DESTINATION "${CMAKE_INSTALL_CSHARPLIBDIR}"
+    COMPONENT "csharp")
+endif ()
+
 if (VTK_BUILD_TESTING)
   add_subdirectory(Testing)
 endif ()

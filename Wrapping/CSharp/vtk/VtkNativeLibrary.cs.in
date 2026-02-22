@@ -24,6 +24,16 @@ namespace VTK
         // Install-tree relative directory
         private const string InstallNativeLibDir = "@VTK_CSHARP_NATIVE_LIB_DIR@";
 
+        // Native helper library for OpenGL warmup and pixel readback
+        private const string HelperLib = "vtkCSharpHelper";
+
+        [DllImport(HelperLib, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int VtkCSharpHelper_WarmupOpenGL();
+
+        [DllImport(HelperLib, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int VtkCSharpHelper_GetPixels(
+            IntPtr renderWindow, int width, int height, IntPtr buffer, int bufferSize);
+
         public static void Initialize()
         {
             if (resolverInstalled)
@@ -32,6 +42,13 @@ namespace VTK
             }
             resolverInstalled = true;
             NativeLibrary.SetDllImportResolver(typeof(VtkNativeLibrary).Assembly, ResolveDllImport);
+
+            // On macOS, perform a native OpenGL warmup to avoid .NET signal handler
+            // interference with the first OpenGL framebuffer initialization.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                VtkCSharpHelper_WarmupOpenGL();
+            }
         }
 
         private static IntPtr ResolveDllImport(string libraryName, Assembly assembly,

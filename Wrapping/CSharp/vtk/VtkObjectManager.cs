@@ -62,8 +62,11 @@ namespace VTK
                     $"Type {type.Name} does not have an (IntPtr, bool) constructor.");
             }
 
-            // ownsRef = true: the managed wrapper will release this reference
+            // ownsRef = true: the managed wrapper will call Delete() on finalization.
+            // We must Register() to balance that Delete(), because the native getter
+            // returned a borrowed reference (no ref count increase).
             var obj = (T)ctor.Invoke(new object[] { ptr, true });
+            obj.AddReference();
             return obj;
         }
 
