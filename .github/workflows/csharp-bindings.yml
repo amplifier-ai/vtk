@@ -3,8 +3,8 @@ name: C# Bindings
 on:
   pull_request:
     branches: [master]
-  release:
-    types: [published]
+  push:
+    branches: [master]
   workflow_dispatch:
 
 env:
@@ -235,16 +235,21 @@ jobs:
           path: artifacts/
           retention-days: 30
 
-  # ── Release ──
-  release:
-    if: github.event_name == 'release'
+  # ── Pre-release (PR) ──
+  # After successful PR build, create a pre-release for testing before merge.
+  prerelease:
+    if: github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
-    name: Attach release artifacts
+    name: Create pre-release
     permissions:
       contents: write
 
     steps:
+      - name: Generate tag
+        id: tag
+        run: echo "tag=v$(date -u +'%Y.%m.%d.%H%M')-rc" >> "$GITHUB_OUTPUT"
+
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
@@ -257,14 +262,60 @@ jobs:
           name: vtk-csharp-osx-arm64
           path: vtk-csharp-osx-arm64
 
-      - name: Create release archives
+      - name: Create archives
         run: |
           cd vtk-csharp-win-x64 && zip -r ../vtk-csharp-win-x64.zip . && cd ..
           cd vtk-csharp-osx-arm64 && tar czf ../vtk-csharp-osx-arm64.tar.gz . && cd ..
 
-      - name: Attach to release
+      - name: Create GitHub pre-release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: VTK C# Bindings ${{ steps.tag.outputs.tag }}
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            vtk-csharp-win-x64.zip
+            vtk-csharp-osx-arm64.tar.gz
+
+  # ── Release (master) ──
+  # After successful build on master, create a stable release.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    name: Create release
+    permissions:
+      contents: write
+
+    steps:
+      - name: Generate tag
+        id: tag
+        run: echo "tag=v$(date -u +'%Y.%m.%d.%H%M')" >> "$GITHUB_OUTPUT"
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-csharp-win-x64
+          path: vtk-csharp-win-x64
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-csharp-osx-arm64
+          path: vtk-csharp-osx-arm64
+
+      - name: Create archives
+        run: |
+          cd vtk-csharp-win-x64 && zip -r ../vtk-csharp-win-x64.zip . && cd ..
+          cd vtk-csharp-osx-arm64 && tar czf ../vtk-csharp-osx-arm64.tar.gz . && cd ..
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: VTK C# Bindings ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
           files: |
             vtk-csharp-win-x64.zip
             vtk-csharp-osx-arm64.tar.gz
