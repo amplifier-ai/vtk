@@ -95,7 +95,7 @@ if (DOTNET_EXECUTABLE)
     WORKING_DIRECTORY "${VTK_CSHARP_PROJECT_DIR}"
     COMMENT "Building VTK C# assembly"
     DEPENDS vtk_csharp_sources)
-  add_dependencies(VTKCSharpAssembly ${vtk_csharp_native_targets})
+  add_dependencies(VTKCSharpAssembly ${vtk_csharp_native_targets} vtkCSharpHelper)
 
   if (CMAKE_INSTALL_CSHARPLIBDIR)
     install(
