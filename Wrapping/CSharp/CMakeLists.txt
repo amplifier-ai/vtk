@@ -91,6 +91,7 @@ if (DOTNET_EXECUTABLE)
     COMMAND "${DOTNET_EXECUTABLE}" build
             "${VTK_CSHARP_PROJECT_DIR}/VTK.CSharp.csproj"
             -c $<CONFIG>
+            --framework net8.0
             -o "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}"
     WORKING_DIRECTORY "${VTK_CSHARP_PROJECT_DIR}"
     COMMENT "Building VTK C# assembly"

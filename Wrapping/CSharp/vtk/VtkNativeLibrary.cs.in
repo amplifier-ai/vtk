@@ -41,6 +41,8 @@ namespace VTK
                 return;
             }
             resolverInstalled = true;
+
+#if !NETSTANDARD
             NativeLibrary.SetDllImportResolver(typeof(VtkNativeLibrary).Assembly, ResolveDllImport);
 
             // On macOS, perform a native OpenGL warmup to avoid .NET signal handler
@@ -49,8 +51,10 @@ namespace VTK
             {
                 VtkCSharpHelper_WarmupOpenGL();
             }
+#endif
         }
 
+#if !NETSTANDARD
         private static IntPtr ResolveDllImport(string libraryName, Assembly assembly,
             DllImportSearchPath? searchPath)
         {
@@ -117,5 +121,6 @@ namespace VTK
             }
             return "lib" + name + ".so";
         }
+#endif
     }
 }

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFrameworks>net8.0;netstandard2.1</TargetFrameworks>
     <RootNamespace>VTK</RootNamespace>
     <AssemblyName>VTK.CSharp</AssemblyName>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
