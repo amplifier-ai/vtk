@@ -319,6 +319,15 @@ else ()
 endif ()
 set("_vtk_module_reason_VTK::Java"
   "via `VTK_WRAP_JAVA`")
+if (VTK_WRAP_CSHARP)
+  list(APPEND vtk_requested_modules
+    VTK::CSharp)
+else ()
+  list(APPEND vtk_rejected_modules
+    VTK::CSharp)
+endif ()
+set("_vtk_module_reason_VTK::CSharp"
+  "via `VTK_WRAP_CSHARP`")
 if (VTK_WRAP_JAVASCRIPT)
   list(APPEND vtk_requested_modules
     VTK::WrappingJavaScript)
@@ -771,6 +780,10 @@ if (VTK_WRAP_JAVA)
 
   enable_language(Java)
   add_subdirectory(Wrapping/Java)
+endif ()
+
+if (VTK_WRAP_CSHARP)
+  add_subdirectory(Wrapping/CSharp)
 endif ()
 
 if (VTK_WRAP_JAVASCRIPT)

@@ -1,0 +1,325 @@
+name: C# Bindings
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VTK_VERSION: "9.6"
+  DOTNET_VERSION: "8.0"
+  CMAKE_BUILD_PARALLEL_LEVEL: 8
+  CCACHE_MAXSIZE: 2G
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win-x64
+            artifact_ext: dll
+          - os: macos-14-xlarge
+            platform: osx-arm64
+            artifact_ext: dylib
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    name: Build (${{ matrix.platform }})
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@master
+
+      # ── Caching ──
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ matrix.platform }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ matrix.platform }}-
+
+      - name: Setup ccache (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ccache
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+
+      - name: Setup ccache (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install ccache -y
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $env:GITHUB_ENV
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $env:GITHUB_ENV
+
+      - name: Cache vcpkg (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\vcpkg\installed
+            C:\vcpkg\packages
+          key: vcpkg-win-x64-${{ hashFiles('.github/workflows/csharp-bindings.yml') }}
+          restore-keys: |
+            vcpkg-win-x64-
+
+      - name: Cache Homebrew (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+          key: brew-osx-arm64-${{ hashFiles('.github/workflows/csharp-bindings.yml') }}
+          restore-keys: |
+            brew-osx-arm64-
+
+      # ── Windows dependencies ──
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          vcpkg install --triplet x64-windows `
+            openxr-loader `
+            ffmpeg `
+            boost-graph `
+            libarchive
+
+      # ── macOS dependencies ──
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ffmpeg hdf5 boost onnxruntime libarchive
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix libarchive)" >> "$GITHUB_ENV"
+
+      # ── CMake Configure ──
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -G Ninja -B build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
+            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+            -DVTK_WRAP_CSHARP=ON `
+            -DVTK_BUILD_TESTING=ON `
+            -DVTK_DATA_EXCLUDE_FROM_ALL=ON `
+            -DVTK_MODULE_ENABLE_VTK_RenderingOpenXR=YES `
+            -DVTK_MODULE_ENABLE_VTK_RenderingOpenXRRemoting=NO `
+            -DVTK_MODULE_ENABLE_VTK_RenderingVR=YES `
+            -DVTK_MODULE_ENABLE_VTK_IOFFMPEG=YES `
+            -DVTK_MODULE_ENABLE_VTK_RenderingFFMPEGOpenGL2=YES `
+            -DVTK_MODULE_ENABLE_VTK_IOGeoJSON=YES `
+            -DVTK_MODULE_ENABLE_VTK_IOLAS=NO `
+            -DVTK_MODULE_ENABLE_VTK_IOH5part=NO `
+            -DVTK_MODULE_ENABLE_VTK_IOXdmf3=NO `
+            -DVTK_MODULE_ENABLE_VTK_ImagingOpenGL2=YES `
+            -DVTK_MODULE_ENABLE_VTK_RenderingVolumeAMR=YES `
+            -DVTK_MODULE_ENABLE_VTK_RenderingExternal=NO `
+            -DVTK_MODULE_ENABLE_VTK_FiltersReebGraph=YES `
+            -DVTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms=YES `
+            -DVTK_MODULE_ENABLE_VTK_SerializationManager=YES `
+            -DVTK_MODULE_ENABLE_VTK_CommonArchive=YES `
+            -DVTK_MODULE_ENABLE_VTK_DomainsMicroscopy=NO `
+            -DVTK_MODULE_ENABLE_VTK_IOOMF=YES `
+            -DVTK_MODULE_ENABLE_VTK_WebGLExporter=YES `
+            -DVTK_MODULE_ENABLE_VTK_TestingSerialization=YES
+
+      - name: Configure (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cmake -G Ninja -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DVTK_WRAP_CSHARP=ON \
+            -DVTK_BUILD_TESTING=ON \
+            -DVTK_DATA_EXCLUDE_FROM_ALL=ON \
+            -DVTK_MODULE_ENABLE_VTK_IOFFMPEG=YES \
+            -DVTK_MODULE_ENABLE_VTK_RenderingFFMPEGOpenGL2=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOGeoJSON=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOLAS=NO \
+            -DVTK_MODULE_ENABLE_VTK_IOH5part=YES \
+            -DVTK_MODULE_ENABLE_VTK_IOXdmf3=YES \
+            -DVTK_MODULE_ENABLE_VTK_ImagingOpenGL2=YES \
+            -DVTK_MODULE_ENABLE_VTK_RenderingVolumeAMR=YES \
+            -DVTK_MODULE_ENABLE_VTK_RenderingExternal=YES \
+            -DVTK_MODULE_ENABLE_VTK_FiltersReebGraph=YES \
+            -DVTK_MODULE_ENABLE_VTK_FiltersONNX=YES \
+            -DVTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms=YES \
+            -DVTK_MODULE_ENABLE_VTK_SerializationManager=YES \
+            -DVTK_MODULE_ENABLE_VTK_CommonArchive=YES \
+            -DVTK_MODULE_ENABLE_VTK_DomainsMicroscopy=NO \
+            -DVTK_MODULE_ENABLE_VTK_IOOMF=YES \
+            -DVTK_MODULE_ENABLE_VTK_WebGLExporter=YES \
+            -DVTK_MODULE_ENABLE_VTK_TestingSerialization=YES
+
+      # ── Build ──
+      - name: Build
+        run: cmake --build build --config Release --target VTKCSharpAssembly VTKCSharpTests
+
+      - name: Print ccache stats
+        run: ccache -s
+
+      # ── Test ──
+      - name: Run C# tests
+        working-directory: build
+        run: ctest -C Release -R vtkCSharpTests --output-on-failure --timeout 120
+
+      # ── Package artifacts ──
+      - name: Collect artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/native
+          New-Item -ItemType Directory -Force -Path artifacts/managed
+
+          # Native CSharp libraries
+          Copy-Item build/bin/Release/*CSharp*.dll artifacts/native/ -ErrorAction SilentlyContinue
+          Copy-Item build/bin/*CSharp*.dll artifacts/native/ -ErrorAction SilentlyContinue
+          Copy-Item build/lib/csharp/*CSharp*.dll artifacts/native/ -ErrorAction SilentlyContinue
+
+          # VTK core native libraries (needed at runtime)
+          Copy-Item build/bin/Release/vtk*.dll artifacts/native/ -ErrorAction SilentlyContinue
+          Copy-Item build/bin/vtk*.dll artifacts/native/ -ErrorAction SilentlyContinue
+
+          # Managed assembly (dotnet build -o places it in lib/)
+          Copy-Item build/lib/VTK.CSharp.dll artifacts/managed/
+
+          # Summary
+          Write-Host "Native libraries: $((Get-ChildItem artifacts/native/*.dll).Count)"
+          Write-Host "Managed assembly: $((Get-ChildItem artifacts/managed/*.dll).Count)"
+
+      - name: Collect artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p artifacts/native artifacts/managed
+
+          # Native CSharp libraries
+          cp build/lib/csharp/*CSharp*.dylib artifacts/native/ 2>/dev/null || true
+          cp build/lib/*CSharp*.dylib artifacts/native/ 2>/dev/null || true
+
+          # VTK core native libraries (needed at runtime)
+          cp build/lib/libvtk*.dylib artifacts/native/ 2>/dev/null || true
+
+          # Managed assembly (dotnet build -o places it in lib/)
+          cp build/lib/VTK.CSharp.dll artifacts/managed/
+
+          # Summary
+          echo "Native libraries: $(ls artifacts/native/*.dylib 2>/dev/null | wc -l)"
+          echo "Managed assembly: $(ls artifacts/managed/*.dll 2>/dev/null | wc -l)"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtk-csharp-${{ matrix.platform }}
+          path: artifacts/
+          retention-days: 30
+
+  # ── Pre-release (PR) ──
+  # After successful PR build, create a pre-release for testing before merge.
+  prerelease:
+    if: github.event_name == 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    name: Create pre-release
+    permissions:
+      contents: write
+
+    steps:
+      - name: Generate tag
+        id: tag
+        run: echo "tag=v$(date -u +'%Y.%m.%d.%H%M')-rc" >> "$GITHUB_OUTPUT"
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-csharp-win-x64
+          path: vtk-csharp-win-x64
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-csharp-osx-arm64
+          path: vtk-csharp-osx-arm64
+
+      - name: Create archives
+        run: |
+          cd vtk-csharp-win-x64 && zip -r ../vtk-csharp-win-x64.zip . && cd ..
+          cd vtk-csharp-osx-arm64 && tar czf ../vtk-csharp-osx-arm64.tar.gz . && cd ..
+
+      - name: Create GitHub pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: VTK C# Bindings ${{ steps.tag.outputs.tag }}
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            vtk-csharp-win-x64.zip
+            vtk-csharp-osx-arm64.tar.gz
+
+  # ── Release (master) ──
+  # After successful build on master, create a stable release.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    name: Create release
+    permissions:
+      contents: write
+
+    steps:
+      - name: Generate tag
+        id: tag
+        run: echo "tag=v$(date -u +'%Y.%m.%d.%H%M')" >> "$GITHUB_OUTPUT"
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-csharp-win-x64
+          path: vtk-csharp-win-x64
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-csharp-osx-arm64
+          path: vtk-csharp-osx-arm64
+
+      - name: Create archives
+        run: |
+          cd vtk-csharp-win-x64 && zip -r ../vtk-csharp-win-x64.zip . && cd ..
+          cd vtk-csharp-osx-arm64 && tar czf ../vtk-csharp-osx-arm64.tar.gz . && cd ..
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: VTK C# Bindings ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            vtk-csharp-win-x64.zip
+            vtk-csharp-osx-arm64.tar.gz

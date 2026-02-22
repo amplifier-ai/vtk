@@ -1,0 +1,126 @@
+// SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// This file is configured by CMake. Do not edit manually.
+
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+
+namespace VTK
+{
+    public static class VtkNativeLibrary
+    {
+        private static bool resolverInstalled;
+
+        // VTK version suffix for library names (e.g. "-9.6")
+        private const string VersionSuffix = "@VTK_CSHARP_VERSION_SUFFIX@";
+
+        // Build-tree library directories (absolute paths set by CMake)
+        private const string BuildLibDir = "@VTK_CSHARP_BUILD_LIB_DIR@";
+        private const string BuildNativeLibDir = "@VTK_CSHARP_BUILD_NATIVELIB_DIR@";
+
+        // Install-tree relative directory
+        private const string InstallNativeLibDir = "@VTK_CSHARP_NATIVE_LIB_DIR@";
+
+        // Native helper library for OpenGL warmup and pixel readback
+        private const string HelperLib = "vtkCSharpHelper";
+
+        [DllImport(HelperLib, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int VtkCSharpHelper_WarmupOpenGL();
+
+        [DllImport(HelperLib, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int VtkCSharpHelper_GetPixels(
+            IntPtr renderWindow, int width, int height, IntPtr buffer, int bufferSize);
+
+        public static void Initialize()
+        {
+            if (resolverInstalled)
+            {
+                return;
+            }
+            resolverInstalled = true;
+
+#if !NETSTANDARD
+            NativeLibrary.SetDllImportResolver(typeof(VtkNativeLibrary).Assembly, ResolveDllImport);
+
+            // On macOS, perform a native OpenGL warmup to avoid .NET signal handler
+            // interference with the first OpenGL framebuffer initialization.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                VtkCSharpHelper_WarmupOpenGL();
+            }
+#endif
+        }
+
+#if !NETSTANDARD
+        private static IntPtr ResolveDllImport(string libraryName, Assembly assembly,
+            DllImportSearchPath? searchPath)
+        {
+            // Try the default resolution first
+            if (NativeLibrary.TryLoad(libraryName, assembly, searchPath, out IntPtr handle))
+            {
+                return handle;
+            }
+
+            // Collect candidate names: unversioned and versioned
+            string[] candidates = new[]
+            {
+                libraryName,
+                libraryName + VersionSuffix
+            };
+
+            // Collect candidate directories
+            string assemblyDir = Path.GetDirectoryName(assembly.Location) ?? "";
+            string[] searchDirs = new[]
+            {
+                BuildLibDir,
+                BuildNativeLibDir,
+                assemblyDir,
+                Path.Combine(assemblyDir, InstallNativeLibDir)
+            };
+
+            foreach (string name in candidates)
+            {
+                string platformName = GetPlatformLibraryName(name);
+
+                // Try each search directory
+                foreach (string dir in searchDirs)
+                {
+                    if (string.IsNullOrEmpty(dir))
+                    {
+                        continue;
+                    }
+                    string fullPath = Path.Combine(dir, platformName);
+                    if (NativeLibrary.TryLoad(fullPath, out handle))
+                    {
+                        return handle;
+                    }
+                }
+
+                // Try system search with platform name
+                if (NativeLibrary.TryLoad(platformName, assembly, searchPath, out handle))
+                {
+                    return handle;
+                }
+            }
+
+            return IntPtr.Zero;
+        }
+
+        private static string GetPlatformLibraryName(string name)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return name + ".dll";
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                return "lib" + name + ".dylib";
+            }
+            return "lib" + name + ".so";
+        }
+#endif
+    }
+}

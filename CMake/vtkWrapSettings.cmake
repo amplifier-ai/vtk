@@ -60,6 +60,13 @@ if(VTK_WRAP_JAVA)
   file(MAKE_DIRECTORY "${VTK_JAVA_HOME}")
 endif()
 
+cmake_dependent_option(VTK_WRAP_CSHARP "Should VTK C# wrapping be built?" OFF
+  "VTK_ENABLE_WRAPPING" OFF)
+if(VTK_WRAP_CSHARP)
+  set(VTK_WRAP_CSHARP_EXE  VTK::WrapCSharp)
+  set(VTK_PARSE_CSHARP_EXE VTK::ParseCSharp)
+endif()
+
 cmake_dependent_option(VTK_WRAP_SERIALIZATION "Should VTK serailizer wrapping be built?" OFF "VTK_ENABLE_WRAPPING" OFF)
 
 cmake_dependent_option(VTK_WRAP_JAVASCRIPT "Should VTK JavaScript wrapping be built?" OFF
