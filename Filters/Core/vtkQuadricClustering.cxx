@@ -566,7 +566,7 @@ void vtkQuadricClustering::AddTriangle(vtkIdType* binIds, double* pt0, double* p
             output->GetCellData()->CopyData(
               input->GetCellData(), this->InCellCount, this->OutCellCount++);
           } // if cell data
-        }   // if not a duplicate
+        } // if not a duplicate
       }
       else // don't check for duplicates
       {
@@ -576,9 +576,9 @@ void vtkQuadricClustering::AddTriangle(vtkIdType* binIds, double* pt0, double* p
           output->GetCellData()->CopyData(
             input->GetCellData(), this->InCellCount, this->OutCellCount++);
         } // if cell data
-      }   // don't check for duplicates
-    }     // if not duplicate vertices
-  }       // if this should be inserted
+      } // don't check for duplicates
+    } // if not duplicate vertices
+  } // if this should be inserted
 }
 
 //------------------------------------------------------------------------------
@@ -1415,7 +1415,7 @@ void vtkQuadricClustering::FindFeaturePoints(
   const vtkIdType* cellPointIds;
   double radAngle = vtkMath::RadiansFromDegrees(this->FeaturePointsAngle);
 
-  this->FeaturePoints->Allocate(numPts);
+  this->FeaturePoints->Reserve(numPts);
 
   for (vtkIdType i = 0; i < numPts; i++)
   {

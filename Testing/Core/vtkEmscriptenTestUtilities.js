@@ -77,9 +77,12 @@ var vtkEmscriptenTestUtilities = {
 
   /**
    * Send the exit code to the server.
+   * This method uses VTK_DEPRECATED_IN_9_7_0
    */
   vtkPostExitCode__sig: "vi",
   vtkPostExitCode: (code) => {
+    console.warn(`The vtkPostExitCode function is deprecated in v9.7.0 and will be removed in future versions.
+      Please access the EXITSTATUS property from the WASM module instance.`);
     // this function is defined in Testing/WebAssembly/templates/index.html
     finalize(code)
   },

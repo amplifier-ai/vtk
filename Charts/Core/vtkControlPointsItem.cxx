@@ -339,7 +339,7 @@ void vtkControlPointsItem::ComputePoints()
 
   if (this->Selection && this->GetNumberOfPoints() == 0)
   {
-    this->Selection->SetNumberOfTuples(0);
+    this->Selection->Initialize();
   }
 
   const int selectedPointCount = this->Selection ? this->Selection->GetNumberOfTuples() : 0;
@@ -640,7 +640,7 @@ void vtkControlPointsItem::DeselectAllPoints()
   {
     return;
   }
-  this->Selection->SetNumberOfTuples(0);
+  this->Selection->Initialize();
   this->GetScene()->SetDirty(true);
 }
 
@@ -1716,7 +1716,8 @@ std::string vtkControlPointsItem::GetControlPointLabel(vtkIdType pointId)
     double point[4];
     this->GetControlPoint(pointId, point);
     std::string labelFormat = this->LabelFormat ? vtk::to_std_format(this->LabelFormat) : "";
-    result = vtk::format(labelFormat, point[0], point[1], point[2], point[3]);
+    VTK_FORMAT_IF_ERROR_RETURN(
+      result = vtk::format(vtk::runtime(labelFormat), point[0], point[1], point[2], point[3]), "");
   }
   return result;
 }

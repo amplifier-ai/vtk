@@ -31,11 +31,10 @@ public:
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
   /**
-   * Get the pair of vertices that define an edge. The method returns the
-   * number of vertices, along with an array of vertices. Note that the
-   * vertices are 0-offset; that is, they refer to the ids of the cell, not
-   * the point ids of the mesh that the cell belongs to. The edgeId must
-   * range between 0<=edgeId<this->GetNumberOfEdges().
+   * Get the pair of vertices that define an edge. The method returns
+   * an array of vertices. Note that the vertices are 0-offset; that is,
+   * they refer to the ids of the cell, not the point ids of the mesh that
+   * the cell belongs to. The edgeId must range between 0<=edgeId<this->GetNumberOfEdges().
    */
   virtual void GetEdgePoints(vtkIdType edgeId, const vtkIdType*& pts) VTK_SIZEHINT(pts, 2)
     VTK_EXPECTS(0 <= edgeId && edgeId < GetNumberOfEdges()) = 0;
@@ -85,7 +84,7 @@ public:
    * sorted in counter clockwise order w.r.t. bisectrix pointing outside the cell
    * at point of id pointId.
    * The first edge corresponds to the edge containing point of id pts[0], where
-   * pts is obtained from this->GetPointToOnRingVertices(pointId, pts).
+   * pts is obtained from this->GetPointToOneRingPoints(pointId, pts).
    * Note that the edges are 0-offset; that is, they refer to the ids of the cell,
    * not the edge ids of the mesh that the cell belongs to.
    * The edgeId must be between 0<=edgeId<this->GetNumberOfEdges();
@@ -193,14 +192,14 @@ public:
 
 protected:
   vtkCell3D();
-  ~vtkCell3D() override;
+  ~vtkCell3D() override = default;
 
-  vtkOrderedTriangulator* Triangulator;
+  vtkSmartPointer<vtkOrderedTriangulator> Triangulator;
   double MergeTolerance;
 
   // used to support clipping
-  vtkTetra* ClipTetra;
-  vtkDoubleArray* ClipScalars;
+  vtkSmartPointer<vtkTetra> ClipTetra;
+  vtkSmartPointer<vtkDoubleArray> ClipScalars;
 
 private:
   vtkCell3D(const vtkCell3D&) = delete;

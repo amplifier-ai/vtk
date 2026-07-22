@@ -3,6 +3,7 @@
 
 #include "vtkOpenGLPolyDataMapper.h"
 
+#include "vtkSetGet.h"
 #include "vtk_glad.h"
 
 #include "vtkArrayDispatch.h"
@@ -703,43 +704,34 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderEdges(
     {
       fsimpl +=
         "  diffuseColor = mix(diffuseColor, diffuseIntensity*edgeColor, emix * edgeOpacity);\n"
-        "  ambientColor = mix(ambientColor, ambientIntensity*edgeColor, emix * edgeOpacity);\n"
-        // " else { discard; }\n" // this yields wireframe only
-        ;
+        "  ambientColor = mix(ambientColor, ambientIntensity*edgeColor, emix * edgeOpacity);\n";
+
+      // even more fake tubes, for surface with edges this implementation
+      // just adjusts the normal calculation but not the zbuffer
+      fsimpl += "  float cdist = min(edist[0], edist[1]);\n"
+                "  vec4 cedge = mix(edgeEqn[0], edgeEqn[1], 0.5 + 0.5*sign(edist[0] - edist[1]));\n"
+                "  cedge = mix(cedge, edgeEqn[2], 0.5 + 0.5*sign(cdist - edist[2]));\n"
+                "  vec3 tnorm = normalize(cross(normalVCVSOutput, cross(vec3(cedge.xy,0.0), "
+                "normalVCVSOutput)));\n"
+                "  float rdist = 2.0*min(cdist, edist[2])/lineWidth;\n"
+
+                // these two lines adjust for the fact that normally part of the
+                // tube would be self occluded but as these are fake tubes this does
+                // not happen. The code adjusts the computed location on the tube as
+                // the surface normal dot view direction drops.
+                "  float A = tnorm.z;\n"
+                "  rdist = 0.5*rdist + 0.5*(rdist + A)/(1+abs(A));\n"
+
+                "  float lenZ = clamp(sqrt(1.0 - rdist*rdist),0.0,1.0);\n"
+                "  normalVCVSOutput = mix(normalVCVSOutput, normalize(rdist*tnorm + "
+                "normalVCVSOutput*lenZ), emix);\n";
     }
     else
     {
       fsimpl += "  diffuseColor = mix(diffuseColor, vec3(0.0), emix * edgeOpacity);\n"
-                "  ambientColor = mix( ambientColor, edgeColor, emix * edgeOpacity);\n"
-        // " else { discard; }\n" // this yields wireframe only
-        ;
+                "  ambientColor = mix( ambientColor, edgeColor, emix * edgeOpacity);\n";
     }
     vtkShaderProgram::Substitute(FSSource, "//VTK::Edges::Impl", fsimpl);
-
-    // even more fake tubes, for surface with edges this implementation
-    // just adjusts the normal calculation but not the zbuffer
-    if (canRenderLinesAsTube)
-    {
-      vtkShaderProgram::Substitute(FSSource, "//VTK::Normal::Impl",
-        "//VTK::Normal::Impl\n"
-        "  float cdist = min(edist[0], edist[1]);\n"
-        "  vec4 cedge = mix(edgeEqn[0], edgeEqn[1], 0.5 + 0.5*sign(edist[0] - edist[1]));\n"
-        "  cedge = mix(cedge, edgeEqn[2], 0.5 + 0.5*sign(cdist - edist[2]));\n"
-        "  vec3 tnorm = normalize(cross(normalVCVSOutput, cross(vec3(cedge.xy,0.0), "
-        "normalVCVSOutput)));\n"
-        "  float rdist = 2.0*min(cdist, edist[2])/lineWidth;\n"
-
-        // these two lines adjust for the fact that normally part of the
-        // tube would be self occluded but as these are fake tubes this does
-        // not happen. The code adjusts the computed location on the tube as
-        // the surface normal dot view direction drops.
-        "  float A = tnorm.z;\n"
-        "  rdist = 0.5*rdist + 0.5*(rdist + A)/(1+abs(A));\n"
-
-        "  float lenZ = clamp(sqrt(1.0 - rdist*rdist),0.0,1.0);\n"
-        "  normalVCVSOutput = mix(normalVCVSOutput, normalize(rdist*tnorm + "
-        "normalVCVSOutput*lenZ), emix);\n");
-    }
 
     shaders[vtkShader::Fragment]->SetSource(FSSource);
   }
@@ -798,6 +790,13 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderColor(
     colorImpl += "  vec3 ambientColor = ambientIntensity * vertexColorVSOutput.rgb;\n"
                  "  vec3 diffuseColor = diffuseIntensity * vertexColorVSOutput.rgb;\n"
                  "  float opacity = opacityUniform * vertexColorVSOutput.a;";
+
+    // PBR requires linear color space, we assume vertex colors are in sRGB space
+    if (actor->GetProperty()->GetInterpolation() == VTK_PBR)
+    {
+      colorImpl += "  ambientColor = pow(ambientColor, vec3(2.2));\n"
+                   "  diffuseColor = pow(diffuseColor, vec3(2.2));\n";
+    }
   }
   // handle point color texture map coloring
   else if (this->InterpolateScalarsBeforeMapping && this->ColorCoordinates &&
@@ -807,6 +806,13 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderColor(
                  "  vec3 ambientColor = ambientIntensity * texColor.rgb;\n"
                  "  vec3 diffuseColor = diffuseIntensity * texColor.rgb;\n"
                  "  float opacity = opacityUniform * texColor.a;";
+
+    // PBR requires linear color space, we assume vertex color map is in sRGB space
+    if (actor->GetProperty()->GetInterpolation() == VTK_PBR)
+    {
+      colorImpl += "  ambientColor = pow(ambientColor, vec3(2.2));\n"
+                   "  diffuseColor = pow(diffuseColor, vec3(2.2));\n";
+    }
   }
   // are we doing cell scalar coloring by texture?
   else if (this->HaveCellScalars && !this->DrawingVertices && !this->PointPicking)
@@ -816,6 +822,13 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderColor(
       "  vec3 ambientColor = ambientIntensity * texColor.rgb;\n"
       "  vec3 diffuseColor = diffuseIntensity * texColor.rgb;\n"
       "  float opacity = opacityUniform * texColor.a;";
+
+    // PBR requires linear color space, we assume cell color map is in sRGB space
+    if (actor->GetProperty()->GetInterpolation() == VTK_PBR)
+    {
+      colorImpl += "  ambientColor = pow(ambientColor, vec3(2.2));\n"
+                   "  diffuseColor = pow(diffuseColor, vec3(2.2));\n";
+    }
   }
   // just material but handle backfaceproperties
   else
@@ -1466,42 +1479,60 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderLight(
       break;
   }
 
-  if (actor->GetProperty()->GetInterpolation() == VTK_PBR && isLightingUsed)
+  if (actor->GetProperty()->GetInterpolation() == VTK_PBR)
   {
     toString.clear();
     toString.str("");
 
-    toString << "  // In IBL, we assume that v=n, so the amount of light reflected is\n"
-                "  // the reflectance F0\n"
-                "  vec3 specularBrdf = F0 * brdf.r + F90 * brdf.g;\n"
-                "  vec3 iblSpecular = prefilteredSpecularColor * specularBrdf;\n"
-                // no diffuse for metals
-                "  vec3 iblDiffuse = (1.0 - F0) * (1.0 - metallic) * irradiance * albedo;\n"
-                "  vec3 color = iblDiffuse + iblSpecular;\n"
-                "\n";
-
-    if (hasClearCoat)
+    if (isLightingUsed)
     {
-      toString
-        << "  // Clear coat attenuation\n"
-           "  Fc = F_Schlick(coatF0, coatF90, coatNdV) * coatStrength;\n"
-           "  iblSpecular *= (1.0 - Fc);\n"
-           "  iblDiffuse *= (1.0 - Fc) * (1.0 - Fc);\n"
-           "  // Clear coat specular\n"
-           "  vec3 iblSpecularClearCoat = prefilteredSpecularCoatColor * (coatF0 * coatBrdf.r + "
-           "coatBrdf.g) * Fc;\n"
-           // Color absorption by the coat layer
-           "  color *= coatColorFactor;\n"
-           "  color += iblSpecularClearCoat;\n"
-           "\n";
+      if (hasIBL)
+      {
+        toString << "  // Multi-scatter approximation: see https://bruop.github.io/ibl/\n"
+                    "  diffuse = (1.0 - metallic) * (1.0 - 0.04) * albedo;\n"
+                    "  vec3 Fr = max(vec3(1.0 - roughness), F0) - F0;\n"
+                    "  vec3 k_S = F0 + Fr * pow(1.0 - NdV, 5.0);\n"
+                    "  vec3 FssEss = k_S * brdf.r + F90 * brdf.g;\n"
+                    "  float Ems = 1.0 - (brdf.r + brdf.g);\n"
+                    "  vec3 F_avg = F0 + (1.0 - F0) / 21.0;\n"
+                    "  vec3 FmsEms = Ems * FssEss * F_avg / max(1.0 - F_avg * Ems, vec3(1e-5));\n"
+                    "  vec3 k_D = diffuse * (1.0 - FssEss - FmsEms);\n"
+                    "  vec3 iblSpecular = FssEss * prefilteredSpecularColor;\n"
+                    "  vec3 iblDiffuse = (FmsEms + k_D) * irradiance;\n";
+      }
+      else
+      {
+        toString << "  vec3 iblSpecular = vec3(0.0);\n"
+                    "  vec3 iblDiffuse = vec3(0.0);\n";
+      }
+      toString << "  vec3 color = iblDiffuse + iblSpecular;\n"
+                  "\n";
+
+      if (hasClearCoat)
+      {
+        toString
+          << "  // Clear coat attenuation\n"
+             "  Fc = F_Schlick(coatF0, coatF90, coatNdV) * coatStrength;\n"
+             "  iblSpecular *= (1.0 - Fc);\n"
+             "  iblDiffuse *= (1.0 - Fc) * (1.0 - Fc);\n"
+             "  // Clear coat specular\n"
+             "  vec3 iblSpecularClearCoat = prefilteredSpecularCoatColor * (coatF0 * coatBrdf.r + "
+             "coatBrdf.g) * Fc;\n"
+             // Color absorption by the coat layer
+             "  color *= coatColorFactor;\n"
+             "  color += iblSpecularClearCoat;\n"
+             "\n";
+      }
+
+      toString << "  color += Lo;\n"
+                  "  color = mix(color, color * ao, aoStrengthUniform);\n" // ambient occlusion
+                  "  color += emissiveColor;\n"                            // emissive
+                  "  gl_FragData[0] = vec4(color, opacity);\n";
     }
 
-    toString << "  color += Lo;\n"
-                "  color = mix(color, color * ao, aoStrengthUniform);\n" // ambient occlusion
-                "  color += emissiveColor;\n"                            // emissive
-                "  color = pow(color, vec3(1.0/2.2));\n"                 // to sRGB color space
-                "  gl_FragData[0] = vec4(color, opacity);\n"
-                "  //VTK::Light::Impl";
+    toString
+      << "  gl_FragData[0].rgb = pow(gl_FragData[0].rgb, vec3(1.0/2.2));\n" // to sRGB color space
+         "  //VTK::Light::Impl";
 
     vtkShaderProgram::Substitute(FSSource, "//VTK::Light::Impl", toString.str(), false);
   }
@@ -2163,7 +2194,14 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderNormal(
       //  if (int(gl_FrontFacing) == 0) does not work on mesa
       if (!this->DrawingPoints(*this->LastBoundBO, actor))
       {
-        toString << "  if (gl_FrontFacing == false) { normalVCVSOutput = -normalVCVSOutput; }\n";
+        if (this->DrawingLines(*this->LastBoundBO, actor))
+        {
+          toString << "  if (normalVCVSOutput.z < 0) { normalVCVSOutput = -normalVCVSOutput; }\n";
+        }
+        else
+        {
+          toString << "  if (gl_FrontFacing == false) { normalVCVSOutput = -normalVCVSOutput; }\n";
+        }
       }
       //"normalVC = normalVCVarying;";
       if (hasClearCoat)
@@ -2175,9 +2213,8 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderNormal(
 
       // normal mapping
       std::vector<texinfo> textures = this->GetTextures(actor);
-      bool normalMapping =
-        std::find_if(textures.begin(), textures.end(),
-          [](const texinfo& tex) { return tex.second == "normalTex"; }) != textures.end();
+      bool normalMapping = std::find_if(textures.begin(), textures.end(), [](const texinfo& tex)
+                             { return tex.second == "normalTex"; }) != textures.end();
       bool coatNormalMapping = hasClearCoat &&
         std::find_if(textures.begin(), textures.end(),
           [](const texinfo& tex) { return tex.second == "coatNormalTex"; }) != textures.end();
@@ -2219,9 +2256,8 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderNormal(
             "//VTK::Normal::Dec\n"
             "uniform float anisotropyRotationUniform;\n");
 
-          bool rotationMap =
-            std::find_if(textures.begin(), textures.end(),
-              [](const texinfo& tex) { return tex.second == "anisotropyTex"; }) != textures.end();
+          bool rotationMap = std::find_if(textures.begin(), textures.end(), [](const texinfo& tex)
+                               { return tex.second == "anisotropyTex"; }) != textures.end();
           if (rotationMap)
           {
             // Sample the texture
@@ -2323,9 +2359,15 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderNormal(
       }
       if (!this->DrawingPoints(*this->LastBoundBO, actor))
       {
-        toString << "  if (gl_FrontFacing == false) { normalVCVSOutput = -normalVCVSOutput; }\n";
+        if (this->DrawingLines(*this->LastBoundBO, actor))
+        {
+          toString << "  if (normalVCVSOutput.z < 0) { normalVCVSOutput = -normalVCVSOutput; }\n";
+        }
+        else
+        {
+          toString << "  if (gl_FrontFacing == false) { normalVCVSOutput = -normalVCVSOutput; }\n";
+        }
       }
-
       if (hasClearCoat)
       {
         toString << "vec3 coatNormalVCVSOutput = normalVCVSOutput;\n";
@@ -2499,9 +2541,9 @@ void vtkOpenGLPolyDataMapper::ReplaceShaderValues(
 {
   this->ReplaceShaderRenderPass(shaders, ren, actor, true);
   this->ReplaceShaderCustomUniforms(shaders, actor);
+  this->ReplaceShaderNormal(shaders, ren, actor);
   this->ReplaceShaderColor(shaders, ren, actor);
   this->ReplaceShaderEdges(shaders, ren, actor);
-  this->ReplaceShaderNormal(shaders, ren, actor);
   this->ReplaceShaderLight(shaders, ren, actor);
   this->ReplaceShaderTCoord(shaders, ren, actor);
   this->ReplaceShaderPicking(shaders, ren, actor);
@@ -2537,12 +2579,17 @@ bool vtkOpenGLPolyDataMapper::DrawingSpheres(vtkOpenGLHelper& cellBO, vtkActor* 
 }
 
 //------------------------------------------------------------------------------
-bool vtkOpenGLPolyDataMapper::DrawingTubes(vtkOpenGLHelper& cellBO, vtkActor* actor)
+bool vtkOpenGLPolyDataMapper::DrawingLines(vtkOpenGLHelper& cellBO, vtkActor* actor)
 {
-  return (actor->GetProperty()->GetRenderLinesAsTubes() &&
-    actor->GetProperty()->GetLineWidth() > 1.0 &&
+  return (actor->GetProperty()->GetLineWidth() > 1.0 &&
     this->GetOpenGLMode(actor->GetProperty()->GetRepresentation(), cellBO.PrimitiveType) ==
       GL_LINES);
+}
+
+//------------------------------------------------------------------------------
+bool vtkOpenGLPolyDataMapper::DrawingTubes(vtkOpenGLHelper& cellBO, vtkActor* actor)
+{
+  return (actor->GetProperty()->GetRenderLinesAsTubes() && this->DrawingLines(cellBO, actor));
 }
 
 //------------------------------------------------------------------------------
@@ -2684,13 +2731,13 @@ void vtkOpenGLPolyDataMapper::UpdateShaders(
   {
     // build the shader source code
     std::map<vtkShader::Type, vtkShader*> shaders;
-    vtkShader* vss = vtkShader::New();
+    vtkNew<vtkShader> vss;
     vss->SetType(vtkShader::Vertex);
     shaders[vtkShader::Vertex] = vss;
-    vtkShader* gss = vtkShader::New();
+    vtkNew<vtkShader> gss;
     gss->SetType(vtkShader::Geometry);
     shaders[vtkShader::Geometry] = gss;
-    vtkShader* fss = vtkShader::New();
+    vtkNew<vtkShader> fss;
     fss->SetType(vtkShader::Fragment);
     shaders[vtkShader::Fragment] = fss;
 
@@ -2700,10 +2747,6 @@ void vtkOpenGLPolyDataMapper::UpdateShaders(
     vtkShaderProgram* newShader = renWin->GetShaderCache()->ReadyShaderProgram(shaders);
     if (newShader)
     {
-      vss->Delete();
-      fss->Delete();
-      gss->Delete();
-
       // if the shader changed reinitialize the VAO
       if (newShader != cellBO.Program || cellBO.Program->GetMTime() > cellBO.AttributeUpdateTime)
       {
@@ -3824,26 +3867,26 @@ void vtkOpenGLPolyDataMapper::AppendCellTextures(vtkRenderer* /*ren*/, vtkActor*
       int numComp = this->Colors->GetNumberOfComponents();
       unsigned char* colorPtr = this->Colors->GetPointer(0);
       assert(numComp == 4);
-      newColors.reserve(numComp * ccmap->GetSize());
-      // use a single color value?
+      // Pre-allocate and gather-copy 32 bits at a time. numComp is asserted
+      // to be 4, newColors' allocator aligns to >= 4 bytes, and nOld is
+      // incremented by numComp*N by each composite delegator, so the
+      // reinterpret_casts stay on 4-byte-aligned addresses.
+      const size_t cSize = ccmap->GetSize();
+      const size_t nOld = newColors.size();
+      newColors.resize(nOld + numComp * cSize);
+      uint32_t* out32 = reinterpret_cast<uint32_t*>(newColors.data() + nOld);
       if (this->FieldDataTupleId > -1 && this->ScalarMode == VTK_SCALAR_MODE_USE_FIELD_DATA)
       {
-        for (size_t i = 0; i < ccmap->GetSize(); i++)
-        {
-          for (int j = 0; j < numComp; j++)
-          {
-            newColors.push_back(colorPtr[this->FieldDataTupleId * numComp + j]);
-          }
-        }
+        uint32_t src =
+          *reinterpret_cast<const uint32_t*>(colorPtr + this->FieldDataTupleId * numComp);
+        std::fill(out32, out32 + cSize, src);
       }
       else
       {
-        for (size_t i = 0; i < ccmap->GetSize(); i++)
+        const uint32_t* in32 = reinterpret_cast<const uint32_t*>(colorPtr);
+        for (size_t i = 0; i < cSize; i++)
         {
-          for (int j = 0; j < numComp; j++)
-          {
-            newColors.push_back(colorPtr[ccmap->GetValue(i) * numComp + j]);
-          }
+          out32[i] = in32[ccmap->GetValue(i)];
         }
       }
     }
@@ -4124,6 +4167,13 @@ void vtkOpenGLPolyDataMapper::BuildIBO(vtkRenderer* ren, vtkActor* act, vtkPolyD
   // construct a string of values that impact the IBO and see if that string has
   // changed
 
+  // Clear TempState so the IBO cache key isn't contaminated by whatever the
+  // caller left in it. Notably, BuildBufferObjects leaves poly->GetMTime()
+  // in it via the CellTexture state check; without this Clear(), any bump
+  // of the polydata MTime (e.g. from a cell-scalar change) would force the
+  // IBO to rebuild on every update even though the cell arrays themselves
+  // are unchanged.
+  this->TempState.Clear();
   // So...polydata can return a dummy CellArray when there are no lines
   this->TempState.Append(prims[0]->GetNumberOfCells() ? prims[0]->GetMTime() : 0, "prim0 mtime");
   this->TempState.Append(prims[1]->GetNumberOfCells() ? prims[1]->GetMTime() : 0, "prim1 mtime");
@@ -4857,7 +4907,7 @@ void vtkOpenGLPolyDataMapper::ProcessSelectorPixelBuffers(
       : nullptr;
     unsigned char* chighdata = sel->GetPixelBuffer(vtkHardwareSelector::CELL_ID_HIGH24);
 
-    if (rawchighdata)
+    if (rawclowdata && rawchighdata)
     {
       this->CellCellMap->Update(prims, representation, poly->GetPoints());
 

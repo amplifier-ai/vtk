@@ -5,6 +5,7 @@ vtk_add_test_cxx(vtkRenderingLICOpenGL2CxxTests tests
   TestStructuredGridLIC2DXSlice.cxx
   TestStructuredGridLIC2DYSlice.cxx
   TestStructuredGridLIC2DZSlice.cxx
+  TestSurfaceLICViewports.cxx
   )
 
 # surface lic on a curved surface
@@ -271,6 +272,27 @@ vtk_add_test_cxx(vtkRenderingLICOpenGL2CxxTests tests
     --color-mode=1
     --anti-alias=1
     TestSurfaceLICPlanarVectorNormalizeOffMediumGrainPerlin,TestSurfaceLIC.cxx
+  )
+# oriented lic
+vtk_add_test_cxx(vtkRenderingLICOpenGL2CxxTests tests
+    --step-size=0.4
+    --num-steps=40
+    --camera-config=1
+    --data=Data/disk_out_ref_surface.vtp
+    --vectors=V
+    --oriented-lic=1
+    TestSurfaceLICCurvedOrientedLIC,TestSurfaceLIC.cxx
+  )
+vtk_add_test_cxx(vtkRenderingLICOpenGL2CxxTests tests
+    --step-size=0.4
+    --num-steps=40
+    --camera-config=1
+    --data=Data/disk_out_ref_surface.vtp
+    --vectors=V
+    --oriented-lic=1
+    --color-by-mag=1
+    --lic-intensity=0.6
+    TestSurfaceLICCurvedOrientedLICColorByMag,TestSurfaceLIC.cxx
   )
 
 vtk_add_test_cxx(vtkRenderingLICOpenGL2CxxTests tests

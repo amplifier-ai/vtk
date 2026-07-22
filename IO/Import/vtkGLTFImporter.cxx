@@ -449,18 +449,12 @@ bool ApplyGLTFMaterialToVTKActor(std::shared_ptr<vtkGLTFDocumentLoader::Model> m
     property->SetNormalTexture(normalTex);
   }
 
+  // extension KHR_materials_ior
+  actor->GetProperty()->SetBaseIOR(material.IOR);
+
   // extension KHR_materials_unlit
   actor->GetProperty()->SetLighting(!material.Unlit);
-  if (material.Unlit)
-  {
-    // the polydata mapper does not convert to sRGB when Unlit, so convert it there
-    double r, g, b;
-    actor->GetProperty()->GetColor(r, g, b);
-    r = pow(r, 1.f / 2.2f);
-    g = pow(g, 1.f / 2.2f);
-    b = pow(b, 1.f / 2.2f);
-    actor->GetProperty()->SetColor(r, g, b);
-  }
+
   return true;
 }
 
@@ -520,8 +514,14 @@ int vtkGLTFImporter::ImportBegin()
   vtkNew<vtkEventForwarderCommand> forwarder;
   forwarder->SetTarget(this);
   this->Loader->AddObserver(vtkCommand::ProgressEvent, forwarder);
-  this->Loader->AddObserver(vtkCommand::WarningEvent, forwarder);
-  this->Loader->AddObserver(vtkCommand::ErrorEvent, forwarder);
+  if (this->HasObserver(vtkCommand::WarningEvent))
+  {
+    this->Loader->AddObserver(vtkCommand::WarningEvent, forwarder);
+  }
+  if (this->HasObserver(vtkCommand::ErrorEvent))
+  {
+    this->Loader->AddObserver(vtkCommand::ErrorEvent, forwarder);
+  }
 
   // Check extension
   std::vector<char> glbBuffer;
@@ -640,7 +640,6 @@ void vtkGLTFImporter::ImportActors(vtkRenderer* renderer)
   // List of nodes to import
   std::stack<int> nodeIdStack;
   std::stack<int> dasmParents;
-  int flatActorId = 0;
 
   // Add root nodes to the stack
   for (int nodeId : model->Scenes[scene].Nodes)
@@ -654,6 +653,28 @@ void vtkGLTFImporter::ImportActors(vtkRenderer* renderer)
   this->Actors.clear();
   this->ArmatureActors.clear();
   this->ActorCollection->RemoveAllItems();
+
+  // Tracks how many times each (parent, name) pair has been used so that
+  // duplicate sibling names — which glTF permits — are made unique before
+  // being passed to vtkDataAssembly::AddNode (which requires uniqueness).
+  std::map<int, std::set<std::string>> usedNames;
+  std::map<std::pair<int, std::string>, int> nameCounters;
+  auto makeUniqueName = [&usedNames, &nameCounters](
+                          int parent, const std::string& baseName) -> std::string
+  {
+    auto& usedSet = usedNames[parent];
+    if (usedSet.insert(baseName).second)
+    {
+      return baseName;
+    }
+    auto& counter = nameCounters[{ parent, baseName }];
+    std::string candidate;
+    do
+    {
+      candidate = baseName + "_" + vtk::to_string(++counter);
+    } while (!usedSet.insert(candidate).second);
+    return candidate;
+  };
 
   // Iterate over tree
   while (!nodeIdStack.empty())
@@ -669,13 +690,19 @@ void vtkGLTFImporter::ImportActors(vtkRenderer* renderer)
     std::string dasmNodeName;
     if (!node.Name.empty())
     {
-      dasmNodeName = vtkDataAssembly::MakeValidNodeName(node.Name.c_str());
+      dasmNodeName =
+        makeUniqueName(dasmParent, vtkDataAssembly::MakeValidNodeName(node.Name.c_str()));
     }
     else
     {
-      dasmNodeName = "node" + vtk::to_string(nodeId);
+      dasmNodeName = makeUniqueName(dasmParent, "node_" + vtk::to_string(nodeId));
     }
     const int dasmNode = this->SceneHierarchy->AddNode(dasmNodeName.c_str(), dasmParent);
+
+    if (!node.Name.empty())
+    {
+      this->SceneHierarchy->SetAttribute(dasmNode, "label", node.Name.c_str());
+    }
 
     // Import node's geometry
     if (node.Mesh >= 0)
@@ -727,11 +754,12 @@ void vtkGLTFImporter::ImportActors(vtkRenderer* renderer)
             primitiveName += "_primitive_" + vtk::to_string(primitiveId++);
           }
           this->OutputsDescription += primitiveName;
-          meshNodeName = vtkDataAssembly::MakeValidNodeName(primitiveName.c_str());
+          meshNodeName =
+            makeUniqueName(dasmNode, vtkDataAssembly::MakeValidNodeName(primitiveName.c_str()));
         }
         else
         {
-          meshNodeName = "primitive_" + vtk::to_string(primitiveId++);
+          meshNodeName = makeUniqueName(dasmNode, "primitive_" + vtk::to_string(primitiveId++));
         }
         this->OutputsDescription += "Primitive Geometry:\n";
         this->OutputsDescription +=
@@ -749,12 +777,19 @@ void vtkGLTFImporter::ImportActors(vtkRenderer* renderer)
         }
         renderer->AddActor(actor);
 
-        this->Actors[nodeId].emplace_back(actor);
-        this->ActorCollection->AddItem(actor);
         const int actorNode =
           this->SceneHierarchy->AddNode(meshNodeName.c_str(), /*parent=*/dasmNode);
         this->SceneHierarchy->SetAttribute(actorNode, "parent_node_name", dasmNodeName.c_str());
-        this->SceneHierarchy->SetAttribute(actorNode, "flat_actor_id", flatActorId++);
+        this->SceneHierarchy->SetAttribute(
+          actorNode, "flat_actor_id", this->ActorCollection->GetNumberOfItems());
+
+        this->Actors[nodeId].emplace_back(actor);
+        this->ActorCollection->AddItem(actor);
+
+        if (!mesh.Name.empty())
+        {
+          this->SceneHierarchy->SetAttribute(actorNode, "label", mesh.Name.c_str());
+        }
 
         this->InvokeEvent(vtkCommand::UpdateDataEvent);
       }
@@ -1234,38 +1269,6 @@ bool vtkGLTFImporter::IsAnimationEnabled(vtkIdType animationIndex)
 }
 
 //----------------------------------------------------------------------------
-// VTK_DEPRECATED_IN_9_6_0
-bool vtkGLTFImporter::GetTemporalInformation(vtkIdType animationIndex, double frameRate,
-  int& nbTimeSteps, double timeRange[2], vtkDoubleArray* timeSteps)
-{
-  if (animationIndex < this->GetNumberOfAnimations())
-  {
-    const auto& model = this->Loader->GetInternalModel();
-    assert(model);
-
-    timeRange[0] = 0;
-    timeRange[1] = model->Animations[animationIndex].Duration;
-
-    if (frameRate > 0)
-    {
-      nbTimeSteps = 0;
-      timeSteps->SetNumberOfComponents(1);
-      timeSteps->SetNumberOfTuples(0);
-
-      std::vector<double> ts;
-      double period = (1.0 / frameRate);
-      for (double i = timeRange[0]; i < timeRange[1]; i += period)
-      {
-        timeSteps->InsertNextTuple(&i);
-        nbTimeSteps++;
-      }
-    }
-    return true;
-  }
-  return false;
-}
-
-//----------------------------------------------------------------------------
 bool vtkGLTFImporter::GetTemporalInformation(
   vtkIdType animationIndex, double timeRange[2], int& nbTimeStep, vtkDoubleArray* timeSteps)
 {
@@ -1279,7 +1282,7 @@ bool vtkGLTFImporter::GetTemporalInformation(
 
     nbTimeStep = static_cast<int>(model->Animations[animationIndex].AllTimestamps.size());
     timeSteps->Initialize();
-    timeSteps->Allocate(nbTimeStep);
+    timeSteps->ReserveValues(nbTimeStep);
     for (const float& Timestamp : model->Animations[animationIndex].AllTimestamps)
     {
       timeSteps->InsertNextValue(Timestamp);

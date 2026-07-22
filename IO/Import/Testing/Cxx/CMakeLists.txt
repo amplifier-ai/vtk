@@ -28,6 +28,7 @@ vtk_add_test_cxx(vtkIOImportCxxTests tests
 vtk_add_test_cxx(vtkIOImportCxxTests tests
   3DSImport-Stream,Test3DSImporterStream.cxx
     DATA{../../../../Testing/Data/iflamigm.3ds}
+    33
 )
 
 vtk_add_test_cxx(vtkIOImportCxxTests tests
@@ -100,6 +101,13 @@ vtk_add_test_cxx(vtkIOImportCxxTests tests
     DATA{../Data/glTF/Duck0.bin}
 )
 
+# Test that a file with an unrecognized image type loads successfully with a warning
+vtk_add_test_cxx(vtkIOImportCxxTests tests
+  NO_VALID
+  TestGLTFImporterUnknownImageType,TestGLTFImporterUnknownImageType.cxx
+    DATA{../Data/glTF/UnknownImageType/UnknownImageType.gltf,dummy.avif}
+)
+
 # (vtk/vtk#19097) This test is skipped on wasm architecture.
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set_tests_properties(VTK::IOImportCxx-TestOBJImporter-Malformed PROPERTIES PASS_REGULAR_EXPRESSION "Unexpected point indice value")
@@ -113,7 +121,15 @@ endif ()
 vtk_add_test_cxx(vtkIOImportCxxTests tests
   TestVRMLImporter.cxx,NO_VALID
   TestVRMLNormals.cxx
-  )
+)
+
+vtk_add_test_cxx(vtkIOImportCxxTests tests NO_SERDES
+  TestVRMLNodesPlayground,TestVRMLNodes.cxx DATA{../../../../Testing/Data/Playground.wrl} 0 20 -1 0 0 -2 7.5
+)
+
+vtk_add_test_cxx(vtkIOImportCxxTests tests NO_SERDES
+  TestVRMLNodesKiCAD,TestVRMLNodes.cxx DATA{../../../../Testing/Data/KiCADExport.wrl} 0.0815 -0.06 1 0.0815 -0.06 0 0.02
+)
 
 vtk_add_test_cxx(vtkIOImportCxxTests tests
   TestGLTFImporter,TestGLTFImporter.cxx DATA{../Data/glTF/Avocado/Avocado.glb} 0 -1 1 0 0 0
@@ -180,7 +196,11 @@ vtk_add_test_cxx(vtkIOImportCxxTests tests
 )
 
 vtk_add_test_cxx(vtkIOImportCxxTests tests
-  TestGLTFImporterHierarchy,TestGLTFImporterHierarchy.cxx DATA{../Data/glTF/ABeautifulGame/ABeautifulGame.glb} -1
+  TestGLTFImporterHierarchy,TestGLTFImporterHierarchy.cxx DATA{../Data/glTF/ABeautifulGame/ABeautifulGame.glb} DATA{../Data/SceneHierarchies/ABeautifulGame.xml}
+)
+
+vtk_add_test_cxx(vtkIOImportCxxTests tests
+  TestGLTFImporterHierarchySameName,TestGLTFImporterHierarchy.cxx DATA{../Data/glTF/TwoQuadsSameName.glb} DATA{../Data/SceneHierarchies/TwoQuadsSameName.xml}
 )
 
 vtk_add_test_cxx(vtkIOImportCxxTests tests
@@ -197,6 +217,14 @@ vtk_add_test_cxx(vtkIOImportCxxTests tests
 
 vtk_add_test_cxx(vtkIOImportCxxTests tests
   TestGLTFImporterUnlitTexture,TestGLTFImporter.cxx DATA{../Data/glTF/unlit-texture.glb} 0 -1 2 0 0 0
+)
+
+vtk_add_test_cxx(vtkIOImportCxxTests tests
+  TestGLTFImporterUnlitTextureSRGB,TestGLTFImporter.cxx DATA{../Data/glTF/unlit-srgb.glb} 0 -1 1 0 0 0
+)
+
+vtk_add_test_cxx(vtkIOImportCxxTests tests
+  TestGLTFImporterKHRMaterialsIOR,TestGLTFImporter.cxx DATA{../Data/glTF/iorTest.glb} 0 -1 3 0 0 0
 )
 
 vtk_add_test_cxx(vtkIOImportCxxTests tests

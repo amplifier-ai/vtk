@@ -21,7 +21,6 @@
 
 VTK_ABI_NAMESPACE_BEGIN
 class vtkCompositeDataSet;
-class vtkHierarchicalBoxDataSet;
 class vtkMultiBlockDataSet;
 class vtkMultiPieceDataSet;
 class vtkNonOverlappingAMR;
@@ -52,7 +51,7 @@ protected:
   /**
    * Performs the actual writing.
    */
-  void WriteData() override;
+  bool WriteDataAndReturn() override;
   int FillInputPortInformation(int port, vtkInformation* info) override;
   ///@}
 

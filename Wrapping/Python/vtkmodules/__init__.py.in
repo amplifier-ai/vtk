@@ -118,11 +118,28 @@ __version__ = "@VTK_MAJOR_VERSION@.@VTK_MINOR_VERSION@.@VTK_BUILD_VERSION@"
 #------------------------------------------------------------------------------
 # describe import dependencies to properly define Python @override
 MODULE_MAPPER = {
+    "vtkCommonCore": [
+        "vtkmodules.numpy_interface.array_overrides",
+        "vtkmodules.util.data_array_selection",
+        "vtkmodules.util.information",
+        "vtkmodules.util.string_array",
+        "vtkmodules.util.variant_array",
+    ],
+    "vtkCommonMath": [
+        "vtkmodules.util.matrix",
+    ],
     "vtkCommonDataModel": [
         "vtkmodules.util.data_model",
+        "vtkmodules.util.graph",
+        "vtkmodules.util.implicit_functions",
+        "vtkmodules.util.molecule",
+        "vtkmodules.util.selection",
     ],
     "vtkCommonExecutionModel": [
         "vtkmodules.util.execution_model",
+    ],
+    "vtkInteractionWidgets": [
+        "vtkmodules.util.widgets",
     ],
 }
 LOADED_MODULES = set()
@@ -153,4 +170,11 @@ def on_vtk_module_init_completed():
     for module_name in pending:
         LOADED_MODULES.add(module_name)
         for import_name in MODULE_MAPPER.get(module_name, []):
-            importlib.import_module(import_name)
+            try:
+                importlib.import_module(import_name)
+            except ImportError:
+                # The module may not be available (e.g. numpy not installed
+                # or Python files not yet copied during the build).  Skip
+                # the override registration silently; core VTK functionality
+                # is unaffected.
+                pass

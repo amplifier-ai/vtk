@@ -24,6 +24,8 @@ vtk_add_test_cxx(vtkFiltersCoreCxxTests tests
   TestClipPolyData.cxx,NO_VALID
   TestCompositeDataProbeFilterWithHyperTreeGrid.cxx
   TestConnectivityFilter.cxx,NO_VALID
+  TestConvertToMultiBlock.cxx,NO_VALID
+  TestConvexHull.cxx,NO_VALID
   TestCutter.cxx,NO_VALID
   TestDataObjectToPartitionedDataSetCollection.cxx,NO_VALID
   TestDecimatePolylineFilter.cxx
@@ -35,19 +37,22 @@ vtk_add_test_cxx(vtkFiltersCoreCxxTests tests
   TestDelaunay2DFindTriangle.cxx,NO_VALID
   TestDelaunay2DMeshes.cxx,NO_VALID
   TestDelaunay3D.cxx,NO_VALID
+  TestDelaunay3DValidity.cxx,NO_VALID
   TestExplicitStructuredGridCrop.cxx
   TestExplicitStructuredGridToUnstructuredGrid.cxx
   TestExecutionTimer.cxx,NO_VALID
   TestExtractCells.cxx,NO_VALID
   TestExtractCellsAlongPolyLine.cxx,NO_VALID
+  TestExtractCellsAlongPolyLinePolyhedron.cxx,NO_VALID
   TestFeatureEdges.cxx,NO_VALID
   TestFieldDataToDataSetAttribute.cxx,NO_VALID
   TestFlyingEdges.cxx
-  TestGenerateIdsHTG.cxx,NO_VALID,NO_OUTPUT
+  TestGenerateIdsHTG.cxx,NO_VALID
   TestGenerateRegionIds.cxx,NO_VALID
   TestGlyph3D.cxx
   TestGlyph3DFollowCamera.cxx,NO_VALID
   TestHedgeHog.cxx,NO_VALID
+  TestHilbertCurveSorter.cxx,NO_VALID
   TestHyperTreeGridProbeFilter.cxx,NO_SERDES
   TestResampleHyperTreeGridWithDataSet.cxx,NO_SERDES
   TestImageDataToExplicitStructuredGrid.cxx

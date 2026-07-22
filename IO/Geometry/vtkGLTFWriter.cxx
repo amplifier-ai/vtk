@@ -1,7 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
 // SPDX-License-Identifier: BSD-3-Clause
-// Hide VTK_DEPRECATED_IN_9_6_0() warnings for this file
-#define VTK_DEPRECATION_LEVEL 0
 
 #include "vtkGLTFWriter.h"
 #include "vtkDataArray.h"
@@ -417,12 +415,12 @@ void WriteCellBufferAndView(
 {
   vtkNew<vtkUnsignedIntArray> ia;
   vtkIdType npts;
-  const vtkIdType* indx;
-  for (ca->InitTraversal(); ca->GetNextCell(npts, indx);)
+  const vtkIdType* index;
+  for (ca->InitTraversal(); ca->GetNextCell(npts, index);)
   {
     for (int j = 0; j < npts; ++j)
     {
-      unsigned int value = static_cast<unsigned int>(indx[j]);
+      unsigned int value = static_cast<unsigned int>(index[j]);
       ia->InsertNextValue(value);
     }
   }
@@ -829,11 +827,6 @@ void WriteMaterial(
 }
 }
 
-std::vector<std::string> vtkGLTFWriter::GetFieldAsStringVector(vtkDataObject* obj, const char* name)
-{
-  return vtkPolyDataMaterial::GetField(obj, name);
-}
-
 std::string vtkGLTFWriter::WriteToString()
 {
   std::ostringstream result;
@@ -841,7 +834,7 @@ std::string vtkGLTFWriter::WriteToString()
   return result.str();
 }
 
-void vtkGLTFWriter::WriteData()
+bool vtkGLTFWriter::WriteDataAndReturn()
 {
   vtksys::ofstream output;
 
@@ -849,7 +842,7 @@ void vtkGLTFWriter::WriteData()
   if (this->FileName == nullptr)
   {
     vtkErrorMacro(<< "Please specify FileName to use");
-    return;
+    return false;
   }
 
   std::string extension = vtksys::SystemTools::GetFilenameLastExtension(this->FileName);
@@ -863,11 +856,12 @@ void vtkGLTFWriter::WriteData()
   if (!output.is_open())
   {
     vtkErrorMacro("Unable to open file for gltf output.");
-    return;
+    return false;
   }
 
   this->WriteToStream(output, this->GetInput());
   output.close();
+  return true;
 }
 
 void vtkGLTFWriter::WriteToStream(ostream& output, vtkDataObject* vtkNotUsed(data))

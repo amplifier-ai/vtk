@@ -348,6 +348,8 @@ public:
    * for the number of items requested. If needed, increase MaxId to mark any
    * new value ranges as in-use.
    */
+  VTK_DEPRECATED_IN_9_7_0("Use vtkAOSDataArrayTemplate::WritePointer(valueIdx, numValues) or "
+                          "vtkAbstractArray::SetNumberOf[Values/Tuples]() instead")
   virtual void* WriteVoidPointer(vtkIdType valueIdx, vtkIdType numValues) = 0;
 
   /**

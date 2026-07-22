@@ -103,7 +103,7 @@ int TestFastCellToGraphicsPrimitiveConversion(int argc, char* argv[])
       wgpu::Buffer CellIdOffsetUniformBuffer;
     } converterData;
     vtkLogStartScope(INFO, "Compute triangle lists in GPU");
-    converter->DispatchCellToPrimitiveComputePipeline(wgpuConfig, triangles, VTK_SURFACE,
+    converter->DispatchCellArrayToPrimitiveComputePipeline(wgpuConfig, triangles, VTK_SURFACE,
       VTK_POLYGON, 0, &converterData.VertexCount, &converterData.ConnectivityBuffer,
       &converterData.CellIdBuffer, &converterData.EdgeArrayBuffer,
       &converterData.CellIdOffsetUniformBuffer);

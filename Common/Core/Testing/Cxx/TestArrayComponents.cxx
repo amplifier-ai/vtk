@@ -53,7 +53,7 @@ bool TestComponentArray(vtkDataArray* baseArray, int component)
       vtkErrorWithObjectMacro(baseArray, "Failed to extract a valid component " << component);
     }
     return ok;
-  };
+  }
 
   std::cout << "  Testing component " << component << "\n";
   bool componentIsValid = (component >= 0 && component < baseArray->GetNumberOfComponents());

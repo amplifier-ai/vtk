@@ -55,7 +55,7 @@ public:
    * vtkConnectivityFilter, vtkDecimatePolylineFilter, vtkDecimatePro, vtkDelaunay3D,
    * vtkFeatureEdges, vtkGlyph3D, vtkHedgeHog, vtkMaskPoints, vtkPolyDataConnectivityFilter,
    * vtkSmoothPolyDataFilter, vtkStaticCleanPolyData, vtkThresholdPoints, vtkTubeFilter,
-   * vtkAppendPoints, vtkTransformFilter, vtkTransformPolyDataFilter,
+   * vtkAppendPoints, vtkTransformFilter,
    * vtkLinearToQuadraticCellsFilter, vtkProcrustesAlignmentFilter,
    * vtkAdaptiveSubdivisionFilter, vtkBoundedPointSource, vtkArcSource, vtkConeSource,
    * vtkCubeSource, vtkCylinderSource, vtkDiskSource, vtkEllipseArcSource,
@@ -216,7 +216,6 @@ public:
 
   /**
    * Checks to see if this filter should abort.
-   * This invoke AbortCheckEvent first.
    */
   bool CheckAbort();
 
@@ -243,6 +242,7 @@ public:
    */
   vtkSetMacro(AbortOutput, bool);
   vtkGetMacro(AbortOutput, bool);
+  vtkBooleanMacro(AbortOutput, bool);
   ///@}
 
   ///@{
@@ -749,12 +749,12 @@ public:
    * Bring the algorithm's information up-to-date.
    */
   VTK_UNBLOCKTHREADS
-  virtual void UpdateInformation();
+  virtual bool UpdateInformation();
 
   /**
    * Create output object(s).
    */
-  virtual void UpdateDataObject();
+  virtual bool UpdateDataObject();
 
   /**
    * Propagate meta-data upstream.
@@ -765,7 +765,7 @@ public:
    * Bring this algorithm's outputs up-to-date.
    */
   VTK_UNBLOCKTHREADS
-  virtual void UpdateWholeExtent();
+  virtual bool UpdateWholeExtent();
 
   /**
    * Convenience routine to convert from a linear ordering of input

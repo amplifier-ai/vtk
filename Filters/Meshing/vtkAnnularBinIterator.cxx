@@ -14,13 +14,13 @@ namespace // anonymous
 const int Level1[8][2] = {
   { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 },  // four edge centers, ping pong style
   { -1, -1 }, { 1, 1 }, { 1, -1 }, { -1, 1 } // four patch corners, ping ponged
-};                                           // Level1
+}; // Level1
 
 const int Level2[16][2] = {
   { -2, 0 }, { 2, 0 }, { 0, -2 }, { 0, 2 },   // edge centers
   { -1, -2 }, { 1, 2 }, { -2, -1 }, { 2, 1 }, // along edges
   { 1, -2 }, { -1, 2 }, { -2, 1 }, { 2, -1 }, { -2, -2 }, { 2, 2 }, { 2, -2 }, { -2, 2 } // corners
-};                                                                                       // Level2
+}; // Level2
 
 const int Level3[24][2] = { { -3, 0 }, { 3, 0 }, { 0, -3 }, { 0, 3 }, { -1, -3 }, { 1, 3 },
   { 3, -1 }, { -3, 1 }, { 1, -3 }, { -1, 3 }, { 3, 1 }, { -3, -1 }, { -2, -3 }, { 2, 3 }, { 3, -2 },
@@ -318,7 +318,7 @@ struct PatchIterator
         return this->GetBinId();
       }
     } // while iterating over patch at current level
-  }   // Next()
+  } // Next()
 
 }; // PatchIterator
 
@@ -484,7 +484,7 @@ struct AnnularBinIterator : public InternalAnnularBinIterator
       if (this->Level >= this->LEVEL_QUERY_THRESHOLD)
       {
         // See if the bin is outside of the Circumflower / radius of security
-        double min[2], max[2];
+        double min[3], max[3];
         this->Bins->GetBucketBounds(PIter.IJ[0], PIter.IJ[1], min, max);
         if (!IntersectsCircle(min, max, this->X, rad22))
         {
@@ -501,7 +501,7 @@ struct AnnularBinIterator : public InternalAnnularBinIterator
             {
               break;
             }
-          }                       // See if the bin falls into any one of the petals
+          } // See if the bin falls into any one of the petals
           if (sNum >= numCircles) // no intersection
           {
             continue;

@@ -120,13 +120,14 @@ set(classes
   vtkTableBasedClipDataSet
   vtkTableFFT
   vtkTableToPolyData
+  vtkTableToRectilinearGrid
   vtkTableToStructuredGrid
   vtkTemporalPathLineFilter
   vtkTemporalStatistics
   vtkTessellatorFilter
   vtkTimeSourceExample
-  vtkTransformFilter
   vtkTransformPolyDataFilter
+  vtkTransformFilter
   vtkUncertaintyTubeFilter
   vtkVertexGlyphFilter
   vtkVolumeContourSpectrumFilter

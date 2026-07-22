@@ -1,5 +1,6 @@
 vtk_add_test_python(
   TestAnnularBinIterator.py,NO_VALID
+  TestFillPointCloud.py
   TestStaticCleanPolyData.py,NO_VALID
   TestVoronoi2D.py
   TestVoronoi2D2.py
@@ -15,6 +16,7 @@ vtk_add_test_python(
   TestVoronoi3D-SpeedTest.py,NO_VALID
   TestVoronoiPancake.py
   TestVoronoiHull.py
+  TestGeneralizedSurfaceNets3DAtlas.py
   TestVoronoiSurfaceNet.py
   TestVoronoiTile.py
   TestVoronoiViewHulls.py

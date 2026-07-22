@@ -245,7 +245,7 @@ vtkIdType vtkMergeCells::AddNewCellsDataSet(vtkDataSet* set, vtkIdType* idMap)
   vtkCellData* setCD = set->GetCellData();
 
   vtkNew<vtkIdList> cellPoints;
-  cellPoints->Allocate(VTK_CELL_SIZE);
+  cellPoints->Reserve(VTK_CELL_SIZE);
 
   for (vtkIdType oldCellId = 0; oldCellId < numCells; oldCellId++)
   {
@@ -545,8 +545,10 @@ vtkIdType vtkMergeCells::AddNewCellsUnstructuredGrid(vtkDataSet* set, vtkIdType*
     }
     else
     {
-      // Hazardous...
-      vtkIdType tmp = facesLocationArray->GetOffsetsArray()->GetTuple1(finalCellId - 1);
+      // For non-polyhedron cells, set face location offset.
+      // When finalCellId is 0, there's no previous cell, so use 0.
+      vtkIdType tmp =
+        (finalCellId > 0) ? facesLocationArray->GetOffsetsArray()->GetTuple1(finalCellId - 1) : 0;
       facesLocationArray->GetOffsetsArray()->SetTuple1(finalCellId, tmp);
     }
 
@@ -627,7 +629,7 @@ void vtkMergeCells::Finish()
   if (this->NumberOfPoints < this->TotalNumberOfPoints)
   {
     // if we don't do this, grid->GetNumberOfPoints() gives the wrong value
-    grid->GetPoints()->GetData()->Resize(this->NumberOfPoints);
+    grid->GetPoints()->SetNumberOfPoints(this->NumberOfPoints);
   }
 
   grid->Squeeze();

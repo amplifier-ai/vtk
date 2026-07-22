@@ -73,6 +73,13 @@ public:
   int Initialize(vtkProcessGroup* group);
 
   /**
+   * Used to initialize MPI attributes.
+   * Setup the TagMaxValue attribute by retrieving MPI_TAG_UB value. If the tag can not be
+   * retrieved, the stored TagMaxValue will be -1. Default value is VTK_INT_MAX.
+   */
+  void InitializeAttributes();
+
+  /**
    * Used to initialize the communicator (i.e. create the underlying MPI_Comm)
    * using MPI_Comm_split on the given communicator. Return values are 1 for success
    * and 0 otherwise.
@@ -163,7 +170,7 @@ public:
    * Exchange variable-sized messages between all processes
    */
   int AllToAllVVoidArray(const void* sendBuffer, const int* sendCounts, const int* sendOffsets,
-    void* recvBuffer, const int* recvCounts, const int* recvOffsets, int type);
+    void* recvBuffer, const int* recvCounts, const int* recvOffsets, int type) override;
 
   ///@{
   /**
@@ -368,6 +375,17 @@ protected:
     int& senderId);
   ///@}
 
+  /**
+   * Overrides the base function to return the maximum value for a tag supported by MPI.
+   * The TagMaxValue attribute is initialized in vtkMPICommunicator::InitializeAttributes where MPI
+   * tries to retrieve the value of the attribute MPI_TAG_UB. It's default value (before the call to
+   * vtkMPICommunicator::InitializeAttributes) is VTK_INT_MAX. If MPI fails to retrieve the value of
+   * MPI_TAG_UB, it's value will be set to -1.
+   */
+  int GetTagMaxValue() const override { return this->TagMaxValue; }
+
+  static int CheckForMPIError(int err);
+
   vtkMPICommunicatorOpaqueComm* MPIComm;
 
   int Initialized;
@@ -375,7 +393,8 @@ protected:
 
   int LastSenderId;
   int UseSsend;
-  static int CheckForMPIError(int err);
+
+  int TagMaxValue = VTK_INT_MAX;
 
 private:
   vtkMPICommunicator(const vtkMPICommunicator&) = delete;

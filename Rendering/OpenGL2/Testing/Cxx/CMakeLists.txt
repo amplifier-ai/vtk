@@ -11,11 +11,12 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(_vtk_test_cxx_wasm_enabled_in_browser ON)
 endif ()
 vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
+  TestArrayTextureBufferCacheSharing.cxx,NO_DATA,NO_VALID,NO_SERDES
+  TestArrayTextureBufferPartialUpload.cxx,NO_DATA,NO_VALID,NO_SERDES
   TestBatchOrderRendering.cxx
   TestBlockVisibility.cxx
   TestBlurAndSobelPasses.cxx
   TestCameraShiftScale.cxx,NO_DATA
-  TestCoincident.cxx
   TestCoincidentFloor.cxx
   TestCompositeDataOverlappingCells.cxx,
   TestCompositeDataPointGaussian.cxx,NO_DATA
@@ -29,6 +30,7 @@ vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestDepthPeelingOcclusionQuery.cxx
   TestDepthPeelingPass.cxx
   TestDepthPeelingPassViewport.cxx
+  TestDirectSelectionRendering.cxx
   TestEDLPass.cxx
   TestEquirectangularToCubeMap.cxx
   TestFXAAFilter.cxx
@@ -46,6 +48,7 @@ vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestGlyph3DMapperPickability.cxx,NO_DATA
   TestGlyph3DMapperTreeIndexingCompositeGlyphs.cxx,NO_DATA
   TestHiddenLineRemovalPass.cxx
+  TestIndexBufferObjectTriangulation.cxx,NO_DATA,NO_VALID,NO_OUTPUT
   TestLightingMapLuminancePass.cxx
   TestLightingMapNormalsPass.cxx
   TestMultiTexturing.cxx,NO_SERDES
@@ -60,13 +63,16 @@ vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestPBREdgeTint.cxx
   TestPBRHdrEnvironment.cxx
   TestPBRAnisotropy.cxx
+  TestPBRColorMap.cxx,NO_DATA
   TestPBRColorMultiplier.cxx
   TestPBRIrradianceHDR.cxx
   TestPBRMapping.cxx
   TestPBRMaterials.cxx
   TestPBRMaterialsCoat.cxx
   TestPBRTextureInterpolateScalars.cxx
+  TestPBRMultipleScatteringIBL.cxx
   TestPointFillPass.cxx
+
   TestPointGaussianMapper.cxx
   TestPointGaussianMapperAnisotropic.cxx
   TestPointGaussianMapperOpacity.cxx
@@ -79,19 +85,25 @@ vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestShadowMapBakerPass.cxx,NO_SERDES
   TestShadowMapPass.cxx
   TestSharedRenderWindow.cxx,NO_SERDES
-  TestDirectSelectionRendering.cxx
   TestSimpleMotionBlur.cxx,NO_SERDES
-  TestSkyboxRotation.cxx
+  TestSkyboxBlur.cxx
   TestSkyboxCubeRotation.cxx
-  TestSkyboxRotationVectors.cxx
+  TestSkyboxNoBlur.cxx
+  TestSkyboxWithRenderPass.cxx
   TestSobelGradientMagnitudePass.cxx
   TestSphereMap.cxx
   TestSpherePoints.cxx
   TestSphereVertex.cxx
   TestSRGB.cxx
   TestSSAAPass.cxx
+  TestSSAAPassDepthRestore.cxx
+  TestSSAAPassChangeRenderers.cxx,NO_VALID
+  TestSSAAPassMultiViewports.cxx
+  TestSSAAPassMultiViewportGetZ.cxx,NO_DATA,NO_VALID
   TestSSAOPass.cxx
+  TestSSAOPassMultiViewports.cxx
   TestSSAOPassWithRenderer.cxx
+  TestStencilMaskPass.cxx
   TestSurfaceInterpolationSwitch.cxx
   TestTessellationShader.cxx,NO_DATA,NO_SERDES
   TestTexture16Bits.cxx,NO_DATA
@@ -142,4 +154,13 @@ if (VTK_USE_WIN32_OPENGL)
   # TestWin32OpenGLDXRenderWindow requires DirectX
   find_package(DirectX REQUIRED)
   target_link_libraries(vtkRenderingOpenGL2CxxTests PRIVATE DirectX::d3d11 DirectX::dxgi)
+endif ()
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  if (VTK_WEBASSEMBLY_THREADS)
+    # Proxy to pthreads is required to ensure threads can be created asynchronously.
+    target_link_options(vtkRenderingOpenGL2CxxTests
+      PRIVATE
+        "-sPROXY_TO_PTHREAD=1")
+  endif ()
 endif ()

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
 // SPDX-License-Identifier: BSD-3-Clause
 
-// VTK_DEPRECATED_IN_9_6_0()
+// VTK_DEPRECATED_IN_9_7_0()
 #define VTK_DEPRECATION_LEVEL 0
 
 #include "vtkWriter.h"
@@ -63,9 +63,9 @@ int vtkWriter::Write()
 
   // always write even if the data hasn't changed
   this->Modified();
-  this->UpdateWholeExtent();
-
-  return (this->GetErrorCode() == vtkErrorCode::NoError);
+  bool ret = this->UpdateWholeExtent();
+  ret &= this->GetErrorCode() == vtkErrorCode::NoError;
+  return ret;
 }
 
 vtkTypeBool vtkWriter::ProcessRequest(
@@ -94,12 +94,12 @@ int vtkWriter::RequestData(vtkInformation*, vtkInformationVector**, vtkInformati
   }
 
   this->InvokeEvent(vtkCommand::StartEvent, nullptr);
-  this->WriteData();
+  bool ret = this->WriteDataAndReturn();
   this->InvokeEvent(vtkCommand::EndEvent, nullptr);
 
   this->WriteTime.Modified();
 
-  return 1;
+  return ret ? 1 : 0;
 }
 
 void vtkWriter::PrintSelf(ostream& os, vtkIndent indent)
@@ -111,14 +111,6 @@ void vtkWriter::EncodeString(char* resname, const char* name)
 {
   std::ostringstream str;
   vtkWriter::EncodeWriteString(&str, name);
-  const auto string = str.str();
-  std::copy_n(string.c_str(), string.size() + 1, resname);
-}
-
-void vtkWriter::EncodeString(char* resname, const char* name, bool doublePercent)
-{
-  std::ostringstream str;
-  vtkWriter::EncodeWriteString(&str, name, doublePercent);
   const auto string = str.str();
   std::copy_n(string.c_str(), string.size() + 1, resname);
 }
@@ -152,40 +144,42 @@ void vtkWriter::EncodeWriteString(ostream* out, const char* name)
   }
 }
 
-void vtkWriter::EncodeWriteString(ostream* out, const char* name, bool doublePercent)
+//------------------------------------------------------------------------------
+// VTK_DEPRECATED_IN_9_7_0 remove fully
+void vtkWriter::WriteData()
 {
-  if (!name)
+  if (!this->WriteDataFlag)
   {
-    return;
+    this->WriteDataAndReturn();
   }
-  int cc = 0;
-
-  char buffer[10];
-
-  while (name[cc])
+  else
   {
-    // Encode spaces and %'s (and most non-printable ascii characters)
-    // The reader does not support spaces in strings.
-    if (name[cc] < 33 || name[cc] > 126 || name[cc] == '\"' || name[cc] == '%')
-    {
-      auto result =
-        vtk::format_to_n(buffer, sizeof(buffer), "{:02X}", static_cast<unsigned char>(name[cc]));
-      *result.out = '\0';
-      if (doublePercent)
-      {
-        *out << "%%";
-      }
-      else
-      {
-        *out << "%";
-      }
-      *out << buffer;
-    }
-    else
-    {
-      *out << name[cc];
-    }
-    cc++;
+    this->WriteDataOverrideError = true;
   }
-}
+};
+
+//------------------------------------------------------------------------------
+// VTK_DEPRECATED_IN_9_7_0 remove fully
+bool vtkWriter::WriteDataAndReturn()
+{
+  if (!this->WriteDataFlag)
+  {
+    this->WriteDataFlag = true;
+    this->WriteData();
+  }
+  else
+  {
+    this->WriteDataOverrideError = true;
+  }
+
+  if (this->WriteDataOverrideError)
+  {
+    // This is a runtime override warning in order to provide retro-compatibility with WriteData
+    vtkErrorMacro(
+      "This writer doesn't have a WriteDataAndReturn override implementation, but it should");
+    return false;
+  }
+  return true;
+};
+
 VTK_ABI_NAMESPACE_END

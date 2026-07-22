@@ -20,6 +20,7 @@ vtk_add_test_python(
   TestPointInPolygon.py,NO_DATA,NO_VALID
   TestPolyDataGetCellPoints.py,NO_DATA,NO_VALID
   TestPolyDataMaterial.py,NO_DATA,NO_VALID
+  TestPolygonIncircle.py,
   TestQuadricClustering.py
   TestStaticPointLocator.py,NO_DATA,NO_VALID
   TestStaticPointLocator2.py,NO_DATA,NO_VALID
@@ -56,4 +57,11 @@ vtk_add_test_python(
   TestUniformHyperTreeGrid3DWithFilters.py,NO_DATA,NO_VALID
   TestHyperTreeGrid3DCursorsMandel.py,NO_DATA,NO_VALID
   TestCompareDataSet.py,NO_DATA,NO_VALID
+  TestSelectionPythonAPI.py,NO_DATA,NO_VALID,NO_OUTPUT
+  TestDataSetProperties.py,NO_DATA,NO_VALID,NO_OUTPUT
+  TestMeshBuildingPythonAPI.py,NO_DATA,NO_VALID,NO_OUTPUT
+  TestGraphPythonAPI.py,NO_DATA,NO_VALID,NO_OUTPUT
+  TestImplicitFunctionsPythonAPI.py,NO_DATA,NO_VALID,NO_OUTPUT
+  TestTupleOperators.py,NO_DATA,NO_VALID,NO_OUTPUT
+  TestMoleculePythonAPI.py,NO_DATA,NO_VALID,NO_OUTPUT
   )

@@ -156,6 +156,9 @@ public:
   void SetYTitleTextProperty(vtkTextProperty* prop) { this->SetTitleTextProperty(1, prop); }
   void SetZTitleTextProperty(vtkTextProperty* prop) { this->SetTitleTextProperty(2, prop); }
   vtkTextProperty* GetTitleTextProperty(int axis);
+  vtkTextProperty* GetXTitleTextProperty() { return this->GetTitleTextProperty(0); }
+  vtkTextProperty* GetYTitleTextProperty() { return this->GetTitleTextProperty(1); }
+  vtkTextProperty* GetZTitleTextProperty() { return this->GetTitleTextProperty(2); }
   ///@}
 
   ///@{
@@ -170,6 +173,9 @@ public:
   void SetYTitle(const std::string& title) { this->SetTitle(1, title); }
   void SetZTitle(const std::string& title) { this->SetTitle(2, title); }
   const std::string& GetTitle(int axis);
+  const std::string& GetXTitle() { return this->GetTitle(0); }
+  const std::string& GetYTitle() { return this->GetTitle(1); }
+  const std::string& GetZTitle() { return this->GetTitle(2); }
   ///@}
 
   ///@{
@@ -183,16 +189,28 @@ public:
   void SetXUseCustomLabels(bool val) { this->SetUseCustomLabels(0, val); }
   void SetYUseCustomLabels(bool val) { this->SetUseCustomLabels(1, val); }
   void SetZUseCustomLabels(bool val) { this->SetUseCustomLabels(2, val); }
+  bool GetUseCustomLabels(int axis);
+  bool GetXUseCustomLabels() { return this->GetUseCustomLabels(0); }
+  bool GetYUseCustomLabels() { return this->GetUseCustomLabels(1); }
+  bool GetZUseCustomLabels() { return this->GetUseCustomLabels(2); }
 
   void SetNumberOfLabels(int axis, vtkIdType val);
   void SetNumberOfXLabels(vtkIdType val) { this->SetNumberOfLabels(0, val); }
   void SetNumberOfYLabels(vtkIdType val) { this->SetNumberOfLabels(1, val); }
   void SetNumberOfZLabels(vtkIdType val) { this->SetNumberOfLabels(2, val); }
+  vtkIdType GetNumberOfLabels(int axis);
+  vtkIdType GetNumberOfXLabels() { return this->GetNumberOfLabels(0); }
+  vtkIdType GetNumberOfYLabels() { return this->GetNumberOfLabels(1); }
+  vtkIdType GetNumberOfZLabels() { return this->GetNumberOfLabels(2); }
 
   void SetLabel(int axis, vtkIdType index, double value);
   void SetXLabel(vtkIdType index, double value) { this->SetLabel(0, index, value); }
   void SetYLabel(vtkIdType index, double value) { this->SetLabel(1, index, value); }
   void SetZLabel(vtkIdType index, double value) { this->SetLabel(2, index, value); }
+  double GetLabel(int axis, vtkIdType index);
+  double GetXLabel(vtkIdType index) { return this->GetLabel(0, index); }
+  double GetYLabel(vtkIdType index) { return this->GetLabel(1, index); }
+  double GetZLabel(vtkIdType index) { return this->GetLabel(2, index); }
   ///@}
 
   //---------------------------------------------------------------------------
@@ -208,12 +226,15 @@ public:
   void SetYLabelTextProperty(vtkTextProperty* prop) { this->SetLabelTextProperty(1, prop); }
   void SetZLabelTextProperty(vtkTextProperty* prop) { this->SetLabelTextProperty(2, prop); }
   vtkTextProperty* GetLabelTextProperty(int axis);
+  vtkTextProperty* GetXLabelTextProperty() { return this->GetLabelTextProperty(0); }
+  vtkTextProperty* GetYLabelTextProperty() { return this->GetLabelTextProperty(1); }
+  vtkTextProperty* GetZLabelTextProperty() { return this->GetLabelTextProperty(2); }
   ///@}
 
   ///@{
   /**
    * Get/set the numerical notation, standard, scientific or mixed (0, 1, 2).
-   * Accepted values are vtkAxis::AUTO, vtkAxis::FIXED, vtkAxis::CUSTOM.
+   * Accepted values are vtkAxis::AUTO, vtkAxis::FIXED.
    *
    * By default, this is set to vtkAxis::AUTO.
    */
@@ -222,6 +243,9 @@ public:
   void SetYNotation(int notation) { this->SetNotation(1, notation); }
   void SetZNotation(int notation) { this->SetNotation(2, notation); }
   int GetNotation(int axis);
+  int GetXNotation() { return this->GetNotation(0); }
+  int GetYNotation() { return this->GetNotation(1); }
+  int GetZNotation() { return this->GetNotation(2); }
   ///@}
 
   ///@{
@@ -233,6 +257,9 @@ public:
   void SetYPrecision(int val) { this->SetPrecision(1, val); }
   void SetZPrecision(int val) { this->SetPrecision(2, val); }
   int GetPrecision(int axis);
+  int GetXPrecision() { return this->GetPrecision(0); }
+  int GetYPrecision() { return this->GetPrecision(1); }
+  int GetZPrecision() { return this->GetPrecision(2); }
   ///@}
 
   ///@{

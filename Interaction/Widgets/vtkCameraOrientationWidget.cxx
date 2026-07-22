@@ -65,7 +65,7 @@ void vtkCameraOrientationWidget::SetDefaultRenderer(vtkRenderer* renderer)
   {
     this->DefaultRenderer->RemoveObserver(this->ReorientObserverTag);
   }
-  const bool reEnable = this->Enabled;
+  const bool wasEnabled = this->Enabled;
   if (this->Enabled)
   {
     // remove previous default renderer from render window.
@@ -81,7 +81,7 @@ void vtkCameraOrientationWidget::SetDefaultRenderer(vtkRenderer* renderer)
     vtkCommand::StartEvent, this, &vtkCameraOrientationWidget::OrientWidgetRepresentation);
   this->Superclass::SetDefaultRenderer(renderer);
 
-  if (reEnable)
+  if (wasEnabled)
   {
     this->SetEnabled(true);
     if (this->Interactor)
@@ -282,7 +282,10 @@ void vtkCameraOrientationWidget::EndSelectAction(vtkAbstractWidget* w)
     }
     else
     {
-      self->ParentRenderer->ResetCamera();
+      if (self->ShouldResetCamera)
+      {
+        self->ParentRenderer->ResetCamera();
+      }
       self->Render();
     }
   }
@@ -317,7 +320,10 @@ void vtkCameraOrientationWidget::PlayAnimationSingleFrame(
     if (this->AnimatorCurrentFrame < this->AnimatorTotalFrames)
     {
       this->InterpolateCamera(this->AnimatorCurrentFrame);
-      this->ParentRenderer->ResetCamera();
+      if (this->ShouldResetCamera)
+      {
+        this->ParentRenderer->ResetCamera();
+      }
       this->Render();
       this->AnimatorCurrentFrame++;
     }

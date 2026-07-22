@@ -241,7 +241,7 @@ int vtkCollectGraph::RequestData(vtkInformation* vtkNotUsed(request),
         for (vtkIdType i = 0; i < wholePointData->GetNumberOfArrays(); i++)
         {
           vtkAbstractArray* arr = wholePointData->GetAbstractArray(i);
-          arr->Resize(newSize);
+          arr->ReserveTuples(newSize);
         }
       }
 
@@ -369,7 +369,7 @@ void vtkCollectGraph::PrintSelf(ostream& os, vtkIndent indent)
 {
   this->Superclass::PrintSelf(os, indent);
 
-  os << indent << "PassThough: " << this->PassThrough << endl;
+  os << indent << "PassThrough: " << this->PassThrough << endl;
   os << indent << "Controller: (" << this->Controller << ")\n";
   os << indent << "SocketController: (" << this->SocketController << ")\n";
   os << indent << "OutputType: " << this->OutputType << endl;

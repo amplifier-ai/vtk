@@ -2,6 +2,7 @@ vtk_add_test_cxx(vtkFiltersParallelCxxTests testsStd
   TestAlignImageDataSetFilter.cxx,NO_VALID
   TestAngularPeriodicFilter.cxx
   TestGaussianQuadratureIntegration.cxx,NO_VALID
+  TestGeometryFilterDispatcher.cxx
   TestPOutlineFilter.cxx,NO_VALID
   )
 vtk_test_cxx_executable(vtkFiltersParallelCxxTests testsStd)
@@ -43,12 +44,19 @@ if (TARGET VTK::ParallelMPI)
     TestHyperTreeGridGhostCellsGenerator.cxx,NO_VALID
   )
 
+  if (TARGET VTK::FiltersParallelMPI)
+    set(vtkFiltersParallelCxxTests-MPI_NUMPROCS 2)
+    vtk_add_test_mpi(vtkFiltersParallelCxxTests-MPI parallel_mpi_tests
+        TestPHyperTreeGridGradient.cxx,NO_VALID
+      )
+  endif()
 
   set(all_tests
     ${tests}
     ${no_data_tests}
     ${no_data_tests_4_procs}
     ${tests_4_procs}
+    ${parallel_mpi_tests}
     )
   vtk_test_cxx_executable(vtkFiltersParallelCxxTests-MPI all_tests)
 endif()

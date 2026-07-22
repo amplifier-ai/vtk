@@ -133,7 +133,7 @@ int vtkArcPlotter::RequestData(vtkInformation* vtkNotUsed(request),
   // polyline. Then generate the arc.
   //
   newPts = vtkPoints::New();
-  newPts->Allocate(numPts, numPts);
+  newPts->Reserve(numPts);
   lineNormals = vtkFloatArray::New();
   lineNormals->SetNumberOfComponents(3);
 
@@ -223,7 +223,7 @@ int vtkArcPlotter::RequestData(vtkInformation* vtkNotUsed(request),
         newLines->InsertCellPoint(id);
       }
     } // for all components
-  }   // for all polylines
+  } // for all polylines
   this->UpdateProgress(0.90);
 
   lineNormals->Delete();

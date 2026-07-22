@@ -165,7 +165,7 @@
 
 .cmake_wheel_artifacts:
     artifacts:
-        expire_in: 1d
+        expire_in: 3d
         when: always
         reports:
             annotations:

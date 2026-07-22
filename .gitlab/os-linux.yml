@@ -39,30 +39,6 @@
     variables:
         VTK_DEFAULT_OPENGL_WINDOW: vtkOSOpenGLRenderWindow
 
-.wheel_linux39_x86_64:
-    extends: .manylinux2014_x86_64
-
-    variables:
-        CMAKE_CONFIGURATION: wheel_linux39_x86_64
-        PYTHON_PREFIX: /opt/python/cp39-cp39
-
-.wheel_linux39_x86_64_osmesa:
-    extends:
-        - .wheel_linux39_x86_64
-        - .wheel_linux_osmesa_addon
-
-    variables:
-        CMAKE_CONFIGURATION: wheel_linux39_x86_64_osmesa
-
-.wheel_linux39_x86_64_egl:
-    extends:
-        - .wheel_linux39_x86_64
-        - .manylinux_2_28_x86_64
-        - .wheel_linux_egl_addon
-
-    variables:
-        CMAKE_CONFIGURATION: wheel_linux39_x86_64_egl
-
 .wheel_linux310_x86_64:
     extends: .manylinux2014_x86_64
 
@@ -207,29 +183,6 @@
     variables:
         CMAKE_CONFIGURATION: wheel_linux314t_x86_64_egl
 
-.wheel_linux39_aarch64:
-    extends: .manylinux_2_28_aarch64
-
-    variables:
-        CMAKE_CONFIGURATION: wheel_linux39_aarch64
-        PYTHON_PREFIX: /opt/python/cp39-cp39
-
-.wheel_linux39_aarch64_osmesa:
-    extends:
-        - .wheel_linux39_aarch64
-        - .wheel_linux_osmesa_addon
-
-    variables:
-        CMAKE_CONFIGURATION: wheel_linux39_aarch64_osmesa
-
-.wheel_linux39_aarch64_egl:
-    extends:
-        - .wheel_linux39_aarch64
-        - .wheel_linux_egl_addon
-
-    variables:
-        CMAKE_CONFIGURATION: wheel_linux39_aarch64_egl
-
 .wheel_linux310_aarch64:
     extends: .manylinux_2_28_aarch64
 
@@ -370,7 +323,7 @@
 
 .fedora42:
     extends: .linux
-    image: "kitware/vtk:ci-fedora42-20251130"
+    image: "kitware/vtk:ci-fedora42-20260603"
 
 .fedora42_x86_64:
     extends: .fedora42
@@ -727,6 +680,7 @@
 .linux_x86_64_cuda_tester_tags:
     tags:
         - cuda-rt
+        - cuda-arch-ptx-compat-75
         - docker
         - linux-x86_64
         - vtk
@@ -826,8 +780,8 @@
     script:
         - *before_script_linux
         - cmake -P .gitlab/ci/download_onnxruntime.cmake
-        - export LD_LIBRARY_PATH=$PWD/.gitlab/onnxruntime/lib64
-        - ctest -VV --output-on-failure -S .gitlab/ci/ctest_test_external.cmake
+        - export LD_LIBRARY_PATH=$PWD/.gitlab/onnxruntime/lib64:/usr/local/lib
+        - ctest -V --output-on-failure -S .gitlab/ci/ctest_test_external.cmake
         - exec .gitlab/ci/check_warnings.sh ./Testing/External
 
     interruptible: true
@@ -845,7 +799,7 @@
     extends: .warning_policy
 
     script:
-        - yum install -y --setopt=install_weak_deps=False libX11-devel libXcursor-devel git-core git-lfs gcc-c++
+        - yum install -y --setopt=install_weak_deps=False libX11-devel libXcursor-devel git-core git-lfs gcc-c++ nasm
         - *before_script_linux
         - .gitlab/ci/sccache.sh
         - sccache --start-server
@@ -913,7 +867,7 @@
         - python -c "import vtk"
         - if [ "$VTK_DISABLE_PYI_TESTING" != "1" ]; then python -m vtkmodules.generate_pyi --test -p vtkmodules; else echo "pyi test is disabled."; fi
         - *before_script_linux
-        - ctest -VV --output-on-failure -S .gitlab/ci/ctest_test_external_wheel.cmake
+        - ctest -V --output-on-failure -S .gitlab/ci/ctest_test_external_wheel.cmake
         - exec .gitlab/ci/check_warnings.sh ./Testing/ExternalWheel
     interruptible: true
 
@@ -1008,6 +962,10 @@
     - wasm-ld --version
     - wasm-opt --version
     - emcc --version
+    # emcc/em++ re-verify the toolchain (clang/wasm-ld/node) on every invocation. The check is
+    # redundant here (hopeful), the emsdk we just installed is immutable for the life of the job, and it
+    # adds up across the hundreds of try_compile probes during configure. Skip it.
+    - export EMCC_SKIP_SANITY_CHECK=1
 
 .cmake_build_wasm_emscripten_linux:
     stage: build

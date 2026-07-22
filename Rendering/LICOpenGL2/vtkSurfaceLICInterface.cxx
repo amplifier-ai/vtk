@@ -78,6 +78,7 @@ vtkSurfaceLICInterface::vtkSurfaceLICInterface()
   this->NumberOfSteps = 20;
   this->NormalizeVectors = 1;
 
+  this->OrientedLIC = false;
   this->EnhancedLIC = 1;
 
   this->EnhanceContrast = 0;
@@ -193,6 +194,10 @@ void vtkSurfaceLICInterface::PrepareForGeometry()
   ostate->vtkglDisable(GL_BLEND);
   ostate->vtkglEnable(GL_DEPTH_TEST);
   ostate->vtkglDisable(GL_SCISSOR_TEST);
+  // Reset the viewport to the FBO origin — the inherited window-space viewport
+  // (which may have a non-zero y origin for split viewports) would otherwise
+  // cause geometry to be rendered at the wrong y position within the FBO texture.
+  ostate->vtkglViewport(0, 0, this->Internals->Viewsize[0], this->Internals->Viewsize[1]);
   ostate->vtkglClearColor(0.0, 0.0, 0.0, 0.0);
   ostate->vtkglClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 }
@@ -362,6 +367,7 @@ void vtkSurfaceLICInterface::ApplyLIC()
   LICer->SetComponentIds(0, 1);
   LICer->SetNormalizeVectors(this->NormalizeVectors);
   LICer->SetMaskThreshold(this->MaskThreshold);
+  LICer->SetOrientedLIC(this->OrientedLIC);
   LICer->SetCommunicator(comm);
 
   // loop over composited extents
@@ -598,7 +604,10 @@ void vtkSurfaceLICInterface::CopyToScreen()
   // Note this is not enough for 1:1 mapping, because depending on the
   // primitive displayed (point,line,polygon), the rasterization rules
   // are different.
-  ostate->vtkglViewport(0, 0, this->Internals->Viewsize[0], this->Internals->Viewsize[1]);
+  // Use the stored viewport origin so the LIC result lands in the correct
+  // region of the window when rendering into a split viewport with y_min > 0.
+  ostate->vtkglViewport(this->Internals->ViewOrigin[0], this->Internals->ViewOrigin[1],
+    this->Internals->Viewsize[0], this->Internals->Viewsize[1]);
 
   this->Internals->DepthImage->Activate();
   this->Internals->RGBColorImage->Activate();
@@ -731,6 +740,22 @@ vtkSetMonitoredParameterMacro(
   val = val > 1.0 ? 1.0 : val;);
 
 //------------------------------------------------------------------------------
+void vtkSurfaceLICInterface::SetOrientedLIC(bool val)
+{
+  if (val == this->OrientedLIC)
+  {
+    return;
+  }
+  this->OrientedLIC = val;
+  if (!this->GenerateNoiseTexture)
+  {
+    this->Internals->Noise = nullptr;
+    this->Internals->NoiseImage = nullptr;
+  }
+  this->Modified();
+}
+
+//------------------------------------------------------------------------------
 void vtkSurfaceLICInterface::SetMaskColor(double* val)
 {
   double rgb[3];
@@ -828,6 +853,37 @@ vtkImageData* vtkSurfaceLICInterface::GetNoiseDataSet()
       noise->GetPointData()->SetScalars(noiseArray);
 
       noiseArray->Delete();
+    }
+    else if (this->OrientedLIC)
+    {
+      // Oriented LIC requires sparse impulse noise. The below noise is generated with 1% sparsity.
+      int noiseTextureSize = 200;
+      int noiseGrainSize = 2;
+      double noiseSparsity = 0.01f;
+      vtkLICRandomNoise2D noiseGen;
+      float* noiseValues = noiseGen.Generate(vtkLICRandomNoise2D::UNIFORM, noiseTextureSize,
+        noiseGrainSize, 1.0f, 1.0f, 1, noiseSparsity, 0.0f, this->NoiseGeneratorSeed);
+      if (noiseValues == nullptr)
+      {
+        vtkErrorMacro(
+          "Failed to generate sparse noise required for OLIC, falling back to default.");
+        noise = vtkLICRandomNoise2D::GetNoiseResource();
+      }
+      else
+      {
+        vtkFloatArray* noiseArray = vtkFloatArray::New();
+        noiseArray->SetNumberOfComponents(2);
+        noiseArray->SetName("noise");
+        noiseArray->SetArray(noiseValues, 2 * noiseTextureSize * noiseTextureSize, 0);
+
+        noise = vtkImageData::New();
+        noise->SetSpacing(1.0, 1.0, 1.0);
+        noise->SetOrigin(0.0, 0.0, 0.0);
+        noise->SetDimensions(noiseTextureSize, noiseTextureSize, 1);
+        noise->GetPointData()->SetScalars(noiseArray);
+
+        noiseArray->Delete();
+      }
     }
     else
     {
@@ -1052,9 +1108,10 @@ void vtkSurfaceLICInterface::ValidateContext(vtkRenderer* renderer)
     this->Internals->Context = context;
   }
 
-  // viewport size changed
+  // viewport size or origin changed
   int viewsize[2];
-  renderer->GetTiledSize(&viewsize[0], &viewsize[1]);
+  int vieworigin[2];
+  renderer->GetTiledSizeAndOrigin(&viewsize[0], &viewsize[1], &vieworigin[0], &vieworigin[1]);
   if (this->Internals->Viewsize[0] != viewsize[0] || this->Internals->Viewsize[1] != viewsize[1])
   {
     modified = true;
@@ -1066,6 +1123,13 @@ void vtkSurfaceLICInterface::ValidateContext(vtkRenderer* renderer)
     // resize textures
     this->Internals->ClearTextures();
     this->Internals->AllocateTextures(context, viewsize);
+  }
+  if (this->Internals->ViewOrigin[0] != vieworigin[0] ||
+    this->Internals->ViewOrigin[1] != vieworigin[1])
+  {
+    modified = true;
+    this->Internals->ViewOrigin[0] = vieworigin[0];
+    this->Internals->ViewOrigin[1] = vieworigin[1];
   }
 
   // if anything changed execute all stages

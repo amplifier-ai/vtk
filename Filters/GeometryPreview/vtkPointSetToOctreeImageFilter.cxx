@@ -109,7 +109,7 @@ struct vtkPointSetToOctreeImageFilter::PointSetToImageFunctor
     double* spacing = this->Spacing;
     double* spacing_2 = this->Spacing_2;
     int* dimensions = this->Dimensions;
-    int* extent = this->Extent;
+    const int* extent = this->Extent;
     vtkImageData* output = this->Output;
     int numFunctions = static_cast<int>(this->Functions.size());
     // no need to iterate over the mean function since it will be computed in the reduce step
@@ -129,7 +129,11 @@ struct vtkPointSetToOctreeImageFilter::PointSetToImageFunctor
     unsigned char* octree = this->Octree->GetPointer(0);
 
     vtk::detail::ValueRange<vtkDataArray, 1> inField;
+#ifndef VTK_DEBUG_RANGE_ITERATORS
     vtk::detail::TupleRange<vtkAOSDataArrayTemplate<float>, vtk::detail::DynamicTupleSize> outField;
+#else
+    vtk::detail::TupleRange<vtkFloatArray, vtk::detail::DynamicTupleSize> outField;
+#endif
     if (this->UseFieldArray)
     {
       inField = vtk::DataArrayValueRange<1>(this->InField);

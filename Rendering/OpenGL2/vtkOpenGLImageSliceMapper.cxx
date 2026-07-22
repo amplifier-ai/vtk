@@ -57,7 +57,7 @@ vtkStandardNewMacro(vtkOpenGLImageSliceMapper);
 // ------------------------------------------------------------------------------------------------
 // Vertex Shader
 // ------------------------------------------------------------------------------------------------
-static const char* selVS = R"(
+static const char* selVertShader = R"(
   #version 150
   in vec3 vertexMC; // Incoming World Coordinates (e.g. 0..512)
   in vec2 tcoordMC; // Texture Coordinates (0..1)
@@ -76,7 +76,7 @@ static const char* selVS = R"(
 // ------------------------------------------------------------------------------------------------
 // Fragment Shader
 // ------------------------------------------------------------------------------------------------
-static const char* selFS = R"(
+static const char* selFragShader = R"(
   #version 150
 
   in vec2 tcoordVC;
@@ -696,7 +696,8 @@ void vtkOpenGLImageSliceMapper::RenderForSelection(
   // Setup Shader Program
   if (!this->SelectionHelper->Program)
   {
-    this->SelectionHelper->Program = renWin->GetShaderCache()->ReadyShaderProgram(selVS, selFS, "");
+    this->SelectionHelper->Program =
+      renWin->GetShaderCache()->ReadyShaderProgram(selVertShader, selFragShader, "");
   }
   else
   {
@@ -757,7 +758,7 @@ void vtkOpenGLImageSliceMapper::RenderForSelection(
   int wholeExt[6];
   input->GetExtent(wholeExt);
 
-  int* dispExt = this->DisplayExtent;
+  const int* dispExt = this->DisplayExtent;
 
   double origin[3];
   double spacing[3];
@@ -822,7 +823,7 @@ void vtkOpenGLImageSliceMapper::RenderForSelection(
   vao->Release();
 
   // Update selector with number of points/cells
-  int* inputExtent = this->GetInput()->GetExtent();
+  const int* inputExtent = this->GetInput()->GetExtent();
   unsigned int const numVoxels = (inputExtent[1] - inputExtent[0] + 1) *
     (inputExtent[3] - inputExtent[2] + 1) * (inputExtent[5] - inputExtent[4] + 1);
   selector->UpdateMaximumPointId(numVoxels);

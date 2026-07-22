@@ -8,6 +8,7 @@
 #include "vtkParseString.h"
 #include "vtkParseSystem.h"
 #include "vtkWrap.h"
+#include "vtkWrapJsonClass.h"
 #include "vtkWrapSerDesClass.h"
 
 #include <errno.h>
@@ -280,7 +281,6 @@ int VTK_PARSE_MAIN(int argc, char* argv[])
   FileInfo* file_info = NULL;
   FILE* fp = NULL;
   const char* name = NULL;
-  int i = 0;
   size_t k, m = 0;
   char* name_from_file = NULL;
 
@@ -351,11 +351,11 @@ int VTK_PARSE_MAIN(int argc, char* argv[])
   int exitCode = 0;
   if (hinfo)
   {
-    for (i = 0; i < contents->NumberOfClasses; i++)
+    for (int i = 0; i < contents->NumberOfClasses; i++)
     {
       vtkWrap_MergeSuperClasses(contents->Classes[i], file_info, hinfo);
     }
-    for (i = 0; i < contents->NumberOfClasses; i++)
+    for (int i = 0; i < contents->NumberOfClasses; i++)
     {
       vtkWrap_ExpandTypedefs(contents->Classes[i], file_info, hinfo);
     }
@@ -372,7 +372,7 @@ int VTK_PARSE_MAIN(int argc, char* argv[])
         name);
     }
     /* generate serializers and deserializers */
-    for (i = 0; i < contents->NumberOfClasses; ++i)
+    for (int i = 0; i < contents->NumberOfClasses; ++i)
     {
       classInfo = contents->Classes[i];
       const int isVTKObject = vtkWrap_IsTypeOf(hinfo, classInfo->Name, "vtkObjectBase");
@@ -392,9 +392,28 @@ int VTK_PARSE_MAIN(int argc, char* argv[])
         registrarsExist = 1;
       }
       vtkWrapSerDes_Class(fp, hinfo, classInfo);
+
+      /* optionally emit a JSON type manifest for this class */
+      if (options->EmitTypesJsonDir)
+      {
+        size_t pathLen = strlen(options->EmitTypesJsonDir) + strlen(classInfo->Name) + 8;
+        char* jsonPath = (char*)malloc(pathLen);
+        snprintf(jsonPath, pathLen, "%s/%s.json", options->EmitTypesJsonDir, classInfo->Name);
+        FILE* jfp = vtkParse_FileOpen(jsonPath, "w");
+        if (jfp)
+        {
+          vtkWrapJson_Class(jfp, hinfo, classInfo, options->TypesJsonWordSize);
+          fclose(jfp);
+        }
+        else
+        {
+          fprintf(stderr, "Error opening JSON manifest file %s\n", jsonPath);
+        }
+        free(jsonPath);
+      }
     }
     /* generate handler code for templates/unmarshalled classes */
-    for (i = 0; i < contents->NumberOfClasses; ++i)
+    for (int i = 0; i < contents->NumberOfClasses; ++i)
     {
       classInfo = contents->Classes[i];
       const int isVTKObject = vtkWrap_IsTypeOf(hinfo, classInfo->Name, "vtkObjectBase");

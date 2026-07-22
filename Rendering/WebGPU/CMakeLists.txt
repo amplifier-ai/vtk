@@ -6,6 +6,7 @@ endif()
 
 set(classes
   vtkWebGPUActor
+  vtkWebGPUBatchedLabeledDataMapper
   vtkWebGPUBatchedPolyDataMapper
   vtkWebGPUCamera
   vtkWebGPUCellToPrimitiveConverter
@@ -25,6 +26,7 @@ set(classes
   vtkWebGPUGlyph3DMapper
   vtkWebGPUHardwareSelector
   vtkWebGPUHelpers
+  vtkWebGPUImageMapper
   vtkWebGPULight
   vtkWebGPUPolyDataMapper
   vtkWebGPUPolyDataMapper2D
@@ -36,6 +38,7 @@ set(classes
   vtkWebGPURenderer
   vtkWebGPUShaderDatabase
   vtkWebGPUShaderProperty
+  vtkWebGPUSkybox
   vtkWebGPUTexture
   vtkWebGPUTextureDeviceResource
   vtkWebGPUTextureView)
@@ -57,7 +60,8 @@ set(private_headers
   "Private/vtkWebGPURenderPassDescriptorInternals.h"
   "Private/vtkWebGPURenderPipelineDescriptorInternals.h"
   "Private/vtkWebGPUShaderModuleInternals.h"
-  "Private/vtkWebGPUTextureInternals.h")
+  "Private/vtkWebGPUTextureInternals.h"
+  "Private/vtkWebGPUBatchedLabeledDataMapperInternals.h")
 
 set(private_sources
   "Private/vtkWebGPUBindGroupInternals.cxx"
@@ -75,17 +79,19 @@ set(private_sources
   "Private/vtkWebGPURenderPassDescriptorInternals.cxx"
   "Private/vtkWebGPURenderPipelineDescriptorInternals.cxx"
   "Private/vtkWebGPUShaderModuleInternals.cxx"
-  "Private/vtkWebGPUTextureInternals.cxx")
+  "Private/vtkWebGPUTextureInternals.cxx"
+  "Private/vtkWebGPUBatchedLabeledDataMapperInternals.cxx")
 
 # setup factory overrides NI - Not Implemented
 set(webgpu_overrides
   Actor
+  BatchedLabeledDataMapper
   # NI: BillboardTextActor3D
   Camera
   CompositePolyDataMapperDelegator
   # NI: LabeledContourMapper
   HardwareSelector
-  # NI: ImageMapper
+  ImageMapper
   # NI: ImageSliceMapper
   Glyph3DMapper
   # NI: HyperTreeGridMapper
@@ -98,7 +104,7 @@ set(webgpu_overrides
   # NI: Uniforms
   Renderer
   # NI: RenderTimerLog
-  # NI: Skybox
+  Skybox
   # NI: TextActor
   # NI: TextActor3D
   # NI: TextMapper

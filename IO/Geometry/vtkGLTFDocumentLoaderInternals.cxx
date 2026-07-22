@@ -770,11 +770,18 @@ bool vtkGLTFDocumentLoaderInternals::LoadMaterial(
   vtkGLTFUtils::GetStringValue(root, "name", material.Name);
 
   material.Unlit = false;
+  material.IOR = 1.5;
 
   auto extRootIt = root.find("extensions");
   if (extRootIt != root.end())
   {
     material.Unlit = extRootIt.value().find("KHR_materials_unlit") != extRootIt.value().end();
+
+    auto iorIt = extRootIt.value().find("KHR_materials_ior");
+    if (iorIt != extRootIt.value().end())
+    {
+      vtkGLTFUtils::GetDoubleValue(iorIt.value(), "ior", material.IOR);
+    }
   }
 
   return true;
@@ -1368,7 +1375,7 @@ bool vtkGLTFDocumentLoaderInternals::LoadModelMetaData(
     // used to fill extensionsUsedByLoader.
     if (!std::any_of(supportedExtensions.begin(), supportedExtensions.end(),
           [&extensionRequiredByModel](const std::string& value)
-          { return value == extensionRequiredByModel; }))
+          { return extensionRequiredByModel == value; }))
     {
       if (!quiet)
       {
@@ -1393,7 +1400,7 @@ bool vtkGLTFDocumentLoaderInternals::LoadModelMetaData(
     }
     if (std::any_of(supportedExtensions.begin(), supportedExtensions.end(),
           [&extensionUsedByModel](const std::string& value)
-          { return value == extensionUsedByModel; }))
+          { return extensionUsedByModel == value; }))
     {
       extensionsUsedByLoader.push_back(extensionUsedByModel);
     }

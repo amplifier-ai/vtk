@@ -5,17 +5,28 @@
 #include "vtkCellData.h"
 #include "vtkClipDataSet.h"
 #include "vtkDataAssembly.h"
+#include "vtkDataObjectMeshCache.h"
 #include "vtkExplicitStructuredGrid.h"
+#include "vtkForceStaticMesh.h"
+#include "vtkHDFReader.h"
 #include "vtkHyperTreeGrid.h"
 #include "vtkImageData.h"
+#include "vtkImplicitArray.h"
+#include "vtkInformation.h"
+#include "vtkLogger.h"
 #include "vtkMatrix3x3.h"
+#include "vtkNew.h"
+#include "vtkPartitionedDataSet.h"
 #include "vtkPartitionedDataSetCollection.h"
 #include "vtkPlane.h"
 #include "vtkPointData.h"
+#include "vtkPointDataToCellData.h"
 #include "vtkPolyData.h"
 #include "vtkPolyLineSource.h"
+#include "vtkRandomAttributeGenerator.h"
 #include "vtkRectilinearGrid.h"
 #include "vtkSphereSource.h"
+#include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkStringFormatter.h"
 #include "vtkStripper.h"
 #include "vtkStructuredGrid.h"
@@ -34,11 +45,14 @@
 #include <iostream>
 
 #define AssertMacro(b, data, reason)                                                               \
-  if (!(b))                                                                                        \
+  do                                                                                               \
   {                                                                                                \
-    std::cerr << "Failed to reflect " << data << ": " << reason << std::endl;                      \
-    return EXIT_FAILURE;                                                                           \
-  }
+    if (!(b))                                                                                      \
+    {                                                                                              \
+      std::cerr << "Failed to reflect " << data << ": " << reason << std::endl;                    \
+      return EXIT_FAILURE;                                                                         \
+    }                                                                                              \
+  } while (0)
 
 #define ReadFileMacro(path, readerClass)                                                           \
   char* fileName = vtkTestUtilities::ExpandDataFileName(argc, argv, path);                         \
@@ -53,6 +67,48 @@ struct PlaneParams
   double origin[3];
 };
 
+namespace
+{
+/**
+ * Given a 3-comp source array, return its X-reflection.
+ */
+struct ReflectXBackend
+{
+  vtkDataArray* Source;
+  ReflectXBackend(vtkDataArray* source)
+    : Source(source)
+  {
+    assert(source->GetNumberOfComponents() == 3);
+  }
+
+  /**
+   * This is used for GetValue
+   * idx = tupleIdx * nbOfComponents + componentIdx
+   */
+  double operator()(vtkIdType idx) const
+  {
+    if (idx % 3 == 0)
+    {
+      return -this->Source->GetComponent(idx / 3, 0);
+    }
+
+    return this->Source->GetComponent(idx / 3, idx % 3);
+  }
+};
+
+vtkSmartPointer<vtkDataArray> CreateReflectedArray(vtkDataArray* input)
+{
+  vtkNew<vtkImplicitArray<::ReflectXBackend>> reflectedInput;
+  reflectedInput->ConstructBackend(input);
+  reflectedInput->SetName(input->GetName());
+  reflectedInput->SetNumberOfComponents(input->GetNumberOfComponents());
+  reflectedInput->SetNumberOfTuples(input->GetNumberOfTuples());
+
+  return reflectedInput;
+}
+}
+
+//------------------------------------------------------------------------------
 vtkSmartPointer<vtkPartitionedDataSetCollection> Reflect(vtkAlgorithmOutput* port, bool copyInput,
   bool flipAll, vtkAxisAlignedReflectionFilter::PlaneModes planeMode,
   const PlaneParams* planeParams = nullptr)
@@ -81,8 +137,10 @@ vtkSmartPointer<vtkPartitionedDataSetCollection> Reflect(vtkAlgorithmOutput* por
   return output;
 }
 
+//------------------------------------------------------------------------------
 int TestUnstructuredGrid(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/can.vtu", vtkXMLUnstructuredGridReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
@@ -113,7 +171,7 @@ int TestUnstructuredGrid(int argc, char* argv[])
 
   // Test PolyLine
   vtkNew<vtkPolyLineSource> polylines;
-  polylines->Resize(3);
+  polylines->SetNumberOfPoints(3);
   polylines->SetClosed(false);
   for (vtkIdType i = 0; i < 3; ++i)
   {
@@ -152,8 +210,10 @@ int TestUnstructuredGrid(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestImageData(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/scalars.vti", vtkXMLImageDataReader);
 
   PlaneParams planeParams;
@@ -182,8 +242,10 @@ int TestImageData(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestRectilinearGrid(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/rectGrid.vtr", vtkXMLRectilinearGridReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
@@ -206,8 +268,10 @@ int TestRectilinearGrid(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestExplicitStructuredGrid(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/explicitStructuredGrid.vtu", vtkXMLUnstructuredGridReader);
   vtkSmartPointer<vtkUnstructuredGridToExplicitStructuredGrid> UgToEsg =
     vtkSmartPointer<vtkUnstructuredGridToExplicitStructuredGrid>::New();
@@ -240,8 +304,10 @@ int TestExplicitStructuredGrid(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestStructuredGrid(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/structGrid.vts", vtkXMLStructuredGridReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
@@ -264,8 +330,10 @@ int TestStructuredGrid(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestPolyData(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/cow.vtp", vtkXMLPolyDataReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
@@ -292,7 +360,7 @@ int TestPolyData(int argc, char* argv[])
 
   // Test PolyLine
   vtkNew<vtkPolyLineSource> polylines;
-  polylines->Resize(3);
+  polylines->SetNumberOfPoints(3);
   polylines->SetClosed(false);
   for (vtkIdType i = 0; i < 3; ++i)
   {
@@ -317,7 +385,7 @@ int TestPolyData(int argc, char* argv[])
 
   // Test PolyVertex
   vtkNew<vtkPolyPointSource> polyPoints;
-  polyPoints->Resize(2);
+  polyPoints->SetNumberOfPoints(2);
   polyPoints->SetPoint(0, 0, 0, 0);
   polyPoints->SetPoint(1, 1, 0, 0);
   vtkSmartPointer<vtkPartitionedDataSetCollection> output3 =
@@ -362,8 +430,10 @@ int TestPolyData(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestHyperTreeGrid(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/HTG/shell_3d.htg", vtkXMLHyperTreeGridReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
@@ -412,8 +482,10 @@ int TestHyperTreeGrid(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestPartitionedDataSetCollection(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/sphereMirror.vtpc", vtkXMLPartitionedDataSetCollectionReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
@@ -455,8 +527,10 @@ int TestPartitionedDataSetCollection(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestMultiBlockMultiPiece(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/mb-of-mps.vtm", vtkXMLMultiBlockDataReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
@@ -487,8 +561,10 @@ int TestMultiBlockMultiPiece(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestMultiBlockOnlyDataSets(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/distTest.vtm", vtkXMLMultiBlockDataReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
@@ -519,21 +595,25 @@ int TestMultiBlockOnlyDataSets(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestMultiBlockEmptyPiece(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/mb_single_piece_empty_data.vtm", vtkXMLMultiBlockDataReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
     Reflect(reader->GetOutputPort(), true, true, vtkAxisAlignedReflectionFilter::X_MIN);
 
   AssertMacro(output->GetNumberOfPartitionedDataSets() == 2, output->GetClassName(),
-    "Incorrect number of partitioned datasets")
+    "Incorrect number of partitioned datasets");
 
-    return EXIT_SUCCESS;
+  return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
 int TestUnstructuredGridWithGlobalIds(int argc, char* argv[])
 {
+  vtkLogScopeFunction(INFO);
   ReadFileMacro("Data/ugWithGlobalIds.vtu", vtkXMLUnstructuredGridReader);
 
   vtkSmartPointer<vtkPartitionedDataSetCollection> output =
@@ -548,6 +628,131 @@ int TestUnstructuredGridWithGlobalIds(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
+//------------------------------------------------------------------------------
+int TestStaticMesh(int argc, char* argv[])
+{
+  vtkLogScopeFunction(INFO);
+  ReadFileMacro("Data/vtkHDF/temporal_partitioned_polydata_cache.vtkhdf", vtkHDFReader);
+
+  reader->UpdateInformation();
+  auto readerInfo = reader->GetOutputInformation(0);
+
+  // we use different timesteps values in the test to check static mesh
+  assert(readerInfo->Length(vtkStreamingDemandDrivenPipeline::TIME_STEPS()) > 2);
+  double* const times = readerInfo->Get(vtkStreamingDemandDrivenPipeline::TIME_STEPS());
+
+  // The Reflect Filter has specific behavior for the different kind of arrays:
+  // - scalars are untouched
+  // - vectors may be reflected
+  // - normals are always reflected.
+  // So generate different kind of them (on point and cell)
+  vtkNew<vtkRandomAttributeGenerator> attributesGenerator;
+  attributesGenerator->SetInputConnection(reader->GetOutputPort());
+  attributesGenerator->GenerateAllPointDataOn();
+  attributesGenerator->GenerateAllCellDataOn();
+  attributesGenerator->SetNumberOfComponents(3);
+
+  const std::string pointArrayName = "RandomPointArray";
+  const std::string cellArrayName = "RandomCellArray";
+
+  vtkNew<vtkAxisAlignedReflectionFilter> reflect;
+  reflect->SetInputConnection(attributesGenerator->GetOutputPort());
+  reflect->CopyInputOff();
+  reflect->SetPlaneModeToXMin();
+  reflect->ReflectAllInputArraysOff();
+  reflect->UpdateTimeStep(times[0]);
+
+  auto reflectInput =
+    vtkPartitionedDataSet::SafeDownCast(attributesGenerator->GetOutputDataObject(0));
+  auto reflectOutputCollection =
+    vtkPartitionedDataSetCollection::SafeDownCast(reflect->GetOutput());
+
+  bool ret = true;
+  {
+    vtkLogScopeF(INFO, "UseMeshCache");
+    auto initialMeshTimes =
+      vtkDataObjectMeshCache::GetDataObjectMeshMTimes(reflectOutputCollection);
+    reflect->UpdateTimeStep(times[1]);
+    reflect->UpdateTimeStep(times[2]);
+    auto secondMeshTimes = vtkDataObjectMeshCache::GetDataObjectMeshMTimes(reflectOutputCollection);
+    bool sameMeshTimes = initialMeshTimes == secondMeshTimes;
+    vtkLogIf(ERROR, !sameMeshTimes, "Mesh cache was not used, meshMTimes differ.");
+    ret &= sameMeshTimes;
+  }
+
+  {
+    vtkLogScopeF(INFO, "ReflectAllInputArraysOff");
+    assert(!reflect->GetReflectAllInputArrays());
+    vtkDataSet* inDataSet = reflectInput->GetPartition(0);
+    auto inVector = inDataSet->GetPointData()->GetArray(pointArrayName.c_str());
+    auto reflectOutput = reflectOutputCollection->GetPartitionedDataSet(0);
+    vtkDataSet* reflectOutDataSet = reflectOutput->GetPartition(0);
+    auto outVector = reflectOutDataSet->GetPointData()->GetArray(pointArrayName.c_str());
+
+    bool pointDataEquals = vtkTestUtilities::CompareAbstractArray(inVector, outVector);
+    vtkLogIf(ERROR, !pointDataEquals,
+      "Incorrect output point array. Should be simply forwarded from input.");
+    ret &= pointDataEquals;
+
+    auto inCellVector = inDataSet->GetCellData()->GetArray(cellArrayName.c_str());
+    auto outCellVector = reflectOutDataSet->GetCellData()->GetArray(cellArrayName.c_str());
+    bool cellDataEquals = vtkTestUtilities::CompareAbstractArray(inCellVector, outCellVector);
+    vtkLogIf(ERROR, !cellDataEquals,
+      "Incorrect output cell array. Should be simply forwarded from input.");
+    ret &= cellDataEquals;
+  }
+
+  {
+    vtkLogScopeF(INFO, "NormalsAlwaysReflected");
+    vtkDataSet* inDataSet = reflectInput->GetPartition(0);
+    auto inNormals = inDataSet->GetPointData()->GetNormals();
+    assert(inNormals);
+    auto reflectOutput = reflectOutputCollection->GetPartitionedDataSet(0);
+    vtkDataSet* reflectOutDataSet = reflectOutput->GetPartition(0);
+    auto outNormals = reflectOutDataSet->GetPointData()->GetNormals();
+    assert(outNormals);
+
+    auto reflectedNormals = ::CreateReflectedArray(inNormals);
+    bool checkNormals = vtkTestUtilities::CompareAbstractArray(outNormals, reflectedNormals);
+    vtkLogIf(ERROR, !checkNormals, "Normals are not reflected as expected");
+    ret &= checkNormals;
+  }
+
+  {
+    vtkLogScopeF(INFO, "ReflectAllInputArraysOn");
+    // modifying the filter invalidate the static mesh cache. Will need a second update.
+    reflect->ReflectAllInputArraysOn();
+    reflect->UpdateTimeStep(times[1]);
+    auto initialMeshTimes =
+      vtkDataObjectMeshCache::GetDataObjectMeshMTimes(reflectOutputCollection);
+    reflect->UpdateTimeStep(times[0]);
+    auto secondMeshTimes = vtkDataObjectMeshCache::GetDataObjectMeshMTimes(reflectOutputCollection);
+    bool sameMeshTimes = initialMeshTimes == secondMeshTimes;
+    vtkLogIf(ERROR, !sameMeshTimes, "Mesh cache was not used");
+    ret &= sameMeshTimes;
+
+    vtkDataSet* inDataSet = reflectInput->GetPartition(0);
+    auto inVector = inDataSet->GetPointData()->GetArray(pointArrayName.c_str());
+    auto reflectOutput = reflectOutputCollection->GetPartitionedDataSet(0);
+    vtkDataSet* reflectOutDataSet = reflectOutput->GetPartition(0);
+    auto outVector = reflectOutDataSet->GetPointData()->GetArray(pointArrayName.c_str());
+
+    auto reflectedArray = ::CreateReflectedArray(inVector);
+    bool checkPointArray = vtkTestUtilities::CompareAbstractArray(reflectedArray, outVector);
+    vtkLogIf(ERROR, !checkPointArray, "Point array was not reflected as expected.");
+    ret &= checkPointArray;
+
+    auto inCellVector = inDataSet->GetCellData()->GetArray(cellArrayName.c_str());
+    auto outCellVector = reflectOutDataSet->GetCellData()->GetArray(cellArrayName.c_str());
+    auto reflectedCellArray = ::CreateReflectedArray(inCellVector);
+    bool checkCellArray = vtkTestUtilities::CompareAbstractArray(reflectedCellArray, outCellVector);
+    vtkLogIf(ERROR, !checkCellArray, "Cell array was not reflected as expected.");
+    ret &= checkCellArray;
+  }
+
+  return ret ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 // This function tests all the input types, and each input type will test a different plane mode.
 int TestAxisAlignedReflectionFilter(int argc, char* argv[])
 {
@@ -556,5 +761,5 @@ int TestAxisAlignedReflectionFilter(int argc, char* argv[])
     TestStructuredGrid(argc, argv) || TestPolyData(argc, argv) || TestHyperTreeGrid(argc, argv) ||
     TestPartitionedDataSetCollection(argc, argv) || TestMultiBlockMultiPiece(argc, argv) ||
     TestMultiBlockOnlyDataSets(argc, argv) || TestMultiBlockEmptyPiece(argc, argv) ||
-    TestUnstructuredGridWithGlobalIds(argc, argv);
+    TestUnstructuredGridWithGlobalIds(argc, argv) || TestStaticMesh(argc, argv);
 }

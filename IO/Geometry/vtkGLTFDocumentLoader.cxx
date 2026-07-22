@@ -16,6 +16,7 @@
 #include "vtkGenericDataArray.h"
 #include "vtkImageData.h"
 #include "vtkImageReader2.h"
+#include "vtkImageReader2Collection.h"
 #include "vtkImageReader2Factory.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
@@ -132,7 +133,7 @@ void GenerateIndicesForPrimitive(vtkGLTFDocumentLoader::Primitive& primitive)
 
 //------------------------------------------------------------------------------
 const std::vector<std::string> vtkGLTFDocumentLoader::SupportedExtensions = { "KHR_lights_punctual",
-  "KHR_materials_unlit", "KHR_texture_transform" };
+  "KHR_materials_unlit", "KHR_texture_transform", "KHR_materials_ior" };
 
 //------------------------------------------------------------------------------
 vtkStandardNewMacro(vtkGLTFDocumentLoader);
@@ -236,7 +237,7 @@ struct vtkGLTFDocumentLoader::BufferDataExtractionWorker
     // element.
     size_t step = this->ByteStride == 0 ? this->NumberOfComponents * size : this->ByteStride;
 
-    output->Allocate(this->NumberOfComponents * this->Count);
+    output->ReserveTuples(this->Count);
 
     // keeps track of the last tuple's index. Only used if this->NormalizeTuples is set to true
     int tupleCount = 0;
@@ -439,7 +440,7 @@ struct vtkGLTFDocumentLoader::AccessorLoadingWorker
       if (accessor.BufferView < 0)
       {
         output->SetNumberOfComponents(accessor.NumberOfComponents);
-        output->Allocate(accessor.Count * accessor.NumberOfComponents);
+        output->ReserveTuples(accessor.Count);
         output->Fill(0);
       }
 
@@ -840,41 +841,20 @@ bool vtkGLTFDocumentLoader::LoadImageData()
     // Skip loading model images
     return true;
   }
-  vtkNew<vtkImageReader2Factory> factory;
+
   size_t numberOfMeshes = this->InternalModel->Meshes.size();
   size_t numberOfImages = this->InternalModel->Images.size();
   for (size_t i = 0; i < numberOfImages; i++)
   {
     auto& image = this->InternalModel->Images[i];
-    vtkSmartPointer<vtkImageReader2> reader = nullptr;
-    image.ImageData = vtkSmartPointer<vtkImageData>::New();
+    vtkSmartPointer<vtkImageReader2> reader;
+    vtkSmartPointer<vtkResourceStream> stream;
     std::vector<std::uint8_t> buffer;
-    vtkNew<vtkMemoryResourceStream> imgStream;
 
     // If image is defined via bufferview index
     if (image.BufferView >= 0 &&
       image.BufferView < static_cast<int>(this->InternalModel->BufferViews.size()))
     {
-      // mime-type must be defined with BufferView to get appropriate reader here (only two possible
-      // values)
-      if (image.MimeType == "image/jpeg")
-      {
-        reader = vtkSmartPointer<vtkJPEGReader>::New();
-      }
-      else if (image.MimeType == "image/png")
-      {
-        reader = vtkSmartPointer<vtkPNGReader>::New();
-      }
-      else
-      {
-        // Extensions allow other image types.
-        // It is perfectly valid to declare other extension-supported image types
-        // so long as they are never required by the scene. Therefore, the possible
-        // error is deferred until later.
-        image.ImageData = nullptr;
-        continue;
-      }
-
       BufferView& bufferView = this->InternalModel->BufferViews[image.BufferView];
       int bufferId = bufferView.Buffer;
       if (bufferId < 0 || bufferId >= static_cast<int>(this->InternalModel->Buffers.size()))
@@ -882,61 +862,65 @@ bool vtkGLTFDocumentLoader::LoadImageData()
         vtkErrorMacro("Invalid bufferView.buffer value for bufferView " << bufferView.Name);
         return false;
       }
+
+      vtkNew<vtkMemoryResourceStream> imgStream;
       imgStream->SetBuffer(this->InternalModel->Buffers[bufferId].data() + bufferView.ByteOffset,
         this->InternalModel->Buffers[bufferId].size());
+      stream = imgStream;
     }
     else // If image is defined via uri
     {
-      auto stream = this->InternalModel->URILoader->Load(image.Uri);
+      stream = this->InternalModel->URILoader->Load(image.Uri);
       if (!stream)
       {
         vtkErrorMacro("Invalid Uri:" << image.Uri);
         return false;
       }
+    }
 
-      // Magic numbers used to detect image format
-      static constexpr std::array<std::uint8_t, 4> jpegMagic = { 0xFF, 0xD8, 0xFF, 0xE0 };
-      static constexpr std::array<std::uint8_t, 4> pngMagic = { 0x89, 0x50, 0x4E, 0x47 };
+    // According to the spec, mime-type must be defined with BufferView
+    if (image.MimeType == "image/jpeg")
+    {
+      reader = vtkSmartPointer<vtkJPEGReader>::New();
+    }
+    else if (image.MimeType == "image/png")
+    {
+      reader = vtkSmartPointer<vtkPNGReader>::New();
+    }
+    else
+    {
+      // If not specified or unknown, find a reader using the image reader factory
+      vtkNew<vtkImageReader2Collection> availableReaders;
+      vtkImageReader2Factory::GetRegisteredReaders(availableReaders);
 
-      buffer.resize(4);
-      if (stream->Read(buffer.data(), buffer.size()) != buffer.size())
+      vtkCollectionSimpleIterator iterator;
+      vtkImageReader2* currentReader;
+      for (availableReaders->InitTraversal(iterator);
+           (currentReader = availableReaders->GetNextImageReader2(iterator));)
       {
-        vtkErrorMacro("Invalid file");
-        return false;
+        if (currentReader->CanReadFile(stream))
+        {
+          reader = vtkSmartPointer<vtkImageReader2>::Take(currentReader->NewInstance());
+          break;
+        }
       }
 
-      if (std::equal(buffer.begin(), buffer.end(), jpegMagic.begin()))
+      if (!reader)
       {
-        reader = vtkSmartPointer<vtkJPEGReader>::New();
-      }
-      else if (std::equal(buffer.begin(), buffer.end(), pngMagic.begin()))
-      {
-        reader = vtkSmartPointer<vtkPNGReader>::New();
-      }
-      else
-      {
-        // Extensions allow other image types.
-        // It is perfectly valid to use other image formats
-        // so long as they are never required by the scene. Therefore, the possible
-        // error is deferred until later.
+        // It is valid to declare image types supported by extensions,
+        // as long as they are not required by the scene, so this is not considered an error.
+        // Instead, we set the image data to null and continue. If the image is actually used by the
+        // scene, an error will occur later when we attempt to render it. However, if it is not
+        // used, there is no reason to fail the entire loading process just because we cannot read
+        // an unused image.
+        vtkWarningMacro("No reader found for image with mime type '"
+          << image.MimeType << "' and uri '" << image.Uri << "'. Image will be set to null.");
         image.ImageData = nullptr;
         continue;
       }
-
-      stream->Seek(0, vtkResourceStream::SeekDirection::End);
-      const auto size = stream->Tell() - this->GLBStart;
-      stream->Seek(this->GLBStart, vtkResourceStream::SeekDirection::Begin);
-      buffer.resize(size);
-      if (stream->Read(buffer.data(), buffer.size()) != buffer.size())
-      {
-        vtkErrorMacro("Failed to read image file data");
-        return false;
-      }
-
-      imgStream->SetBuffer(buffer.data(), buffer.size());
     }
 
-    reader->SetStream(imgStream);
+    reader->SetStream(stream);
     bool status = reader->GetExecutive()->Update();
     image.ImageData = reader->GetOutput();
 

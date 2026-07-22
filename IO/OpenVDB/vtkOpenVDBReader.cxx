@@ -230,16 +230,16 @@ namespace
 template <vtkIdType NComps, typename GridType, typename ArrayType>
 struct SamplerVdbGrid
 {
-  static inline void SampleVdbGrid(openvdb::Coord vtkNotUsed(ijk),
+  static void SampleVdbGrid(openvdb::Coord vtkNotUsed(ijk),
     typename GridType::Accessor vtkNotUsed(accessor), ArrayType* vtkNotUsed(dataArray),
-    vtkIdType vtkNotUsed(idx)){};
+    vtkIdType vtkNotUsed(idx)) {};
 };
 
 //------------------------------------------------------------------------
 template <typename GridType, typename ArrayType>
 struct SamplerVdbGrid<1, GridType, ArrayType>
 {
-  static inline void SampleVdbGrid(
+  static void SampleVdbGrid(
     openvdb::Coord ijk, typename GridType::Accessor accessor, ArrayType* dataArray, vtkIdType idx)
   {
     dataArray->SetTuple1(idx, accessor.getValue(ijk));
@@ -250,7 +250,7 @@ struct SamplerVdbGrid<1, GridType, ArrayType>
 template <typename GridType, typename ArrayType>
 struct SamplerVdbGrid<3, GridType, ArrayType>
 {
-  static inline void SampleVdbGrid(
+  static void SampleVdbGrid(
     openvdb::Coord ijk, typename GridType::Accessor accessor, ArrayType* dataArray, vtkIdType idx)
   {
     typename GridType::ValueType val = accessor.getValue(ijk);
@@ -600,7 +600,7 @@ void vtkOpenVDBReaderInternals::UpdateGridInformation(
   }
 
   // Needed only when reading from stream
-  // This is overriden when reading from file
+  // This is overridden when reading from file
   gridInfo->Grid = grid;
 
   gridInfo->Name = grid->getName();

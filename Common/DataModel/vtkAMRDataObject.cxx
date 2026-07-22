@@ -14,7 +14,6 @@
 #include "vtkOverlappingAMRMetaData.h"
 #include "vtkRectilinearGrid.h"
 #include "vtkType.h"
-#include "vtkUniformGrid.h" // VTK_DEPRECATED_IN_9_6_0
 #include "vtkUniformGridAMRIterator.h"
 
 VTK_ABI_NAMESPACE_BEGIN
@@ -48,7 +47,7 @@ vtkCartesianGrid* vtkAMRDataObject::GetDataSetAsCartesianGrid(unsigned int level
     return nullptr;
   }
 
-  return vtkCartesianGrid::SafeDownCast(this->GetPartition(level, idx));
+  return vtkCartesianGrid::SafeDownCast(this->Superclass::GetPartition(level, idx));
 }
 
 //------------------------------------------------------------------------------
@@ -56,6 +55,12 @@ vtkImageData* vtkAMRDataObject::GetDataSetAsImageData(unsigned int level, unsign
 {
   return vtkImageData::SafeDownCast(this->GetDataSetAsCartesianGrid(level, idx));
 };
+
+//------------------------------------------------------------------------------
+vtkDataSet* vtkAMRDataObject::GetPartition(unsigned int level, unsigned int idx)
+{
+  return this->GetDataSetAsCartesianGrid(level, idx);
+}
 
 //------------------------------------------------------------------------------
 vtkRectilinearGrid* vtkAMRDataObject::GetDataSetAsRectilinearGrid(
@@ -84,15 +89,6 @@ void vtkAMRDataObject::Initialize()
   this->Initialize(std::vector<unsigned int>{});
 }
 
-// VTK_DEPRECATED_IN_9_6_0("Use Initialize(const std::vector<unsigned int>&) instead")
-//------------------------------------------------------------------------------
-void vtkAMRDataObject::Initialize(int numLevels, const int* blocksPerLevel)
-{
-  std::vector<unsigned int> vec;
-  vec.assign(blocksPerLevel, blocksPerLevel + numLevels);
-  this->Initialize(vec);
-}
-
 //------------------------------------------------------------------------------
 void vtkAMRDataObject::Initialize(const std::vector<unsigned int>& blocksPerLevel)
 {
@@ -104,11 +100,6 @@ void vtkAMRDataObject::Initialize(const std::vector<unsigned int>& blocksPerLeve
 //------------------------------------------------------------------------------
 void vtkAMRDataObject::Initialize(vtkAMRMetaData* metadata)
 {
-  std::vector<unsigned int> blocksPerLevel(metadata->GetNumberOfLevels());
-  for (unsigned int i = 0; i < metadata->GetNumberOfLevels(); i++)
-  {
-    blocksPerLevel.emplace_back(metadata->GetNumberOfBlocks(i));
-  }
   this->SetAMRMetaData(metadata);
   this->InitializeInternal();
 }
@@ -133,7 +124,7 @@ void vtkAMRDataObject::InitializeInternal()
     this->SetNumberOfPartitions(level, nBlocks);
     for (unsigned int block = 0; block < nBlocks; block++)
     {
-      this->SetPartition(level, block, nullptr);
+      this->Superclass::SetPartition(level, block, nullptr);
     }
   }
 }
@@ -211,7 +202,13 @@ void vtkAMRDataObject::SetDataSet(unsigned int level, unsigned int idx, vtkDataS
     this->Bounds[i * 2 + 1] = std::max(bb[i * 2 + 1], this->Bounds[i * 2 + 1]);
   } // END for each dimension
 
-  this->SetPartition(level, idx, grid);
+  this->Superclass::SetPartition(level, idx, grid);
+}
+
+//------------------------------------------------------------------------------
+void vtkAMRDataObject::SetPartition(unsigned int idx, unsigned int partition, vtkDataObject* object)
+{
+  this->SetDataSet(idx, partition, vtkDataSet::SafeDownCast(object));
 }
 
 //------------------------------------------------------------------------------
@@ -334,9 +331,9 @@ void vtkAMRDataObject::CopyStructure(vtkCompositeDataSet* src)
 
   this->Superclass::CopyStructure(src);
 
-  if (vtkAMRDataObject* hbds = vtkAMRDataObject::SafeDownCast(src))
+  if (vtkAMRDataObject* amr = vtkAMRDataObject::SafeDownCast(src))
   {
-    this->SetAMRMetaData(hbds->GetAMRMetaData());
+    this->SetAMRMetaData(amr->GetAMRMetaData());
   }
 
   this->Modified();
@@ -393,13 +390,6 @@ void vtkAMRDataObject::GetMax(double max[3])
   max[0] = bb[1];
   max[1] = bb[3];
   max[2] = bb[5];
-}
-
-// VTK_DEPRECATED_IN_9_6_0
-//------------------------------------------------------------------------------
-vtkUniformGrid* vtkAMRDataObject::GetDataSet(unsigned int level, unsigned int idx)
-{
-  return vtkUniformGrid::SafeDownCast(this->GetDataSetAsCartesianGrid(level, idx));
 }
 
 VTK_ABI_NAMESPACE_END

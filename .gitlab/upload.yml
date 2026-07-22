@@ -25,6 +25,32 @@
 
     interruptible: false
 
+.rsync_upload_versioned_docs:
+    extends: .rsync_upload
+    environment:
+        name: rsync-upload-versioned-docs
+    before_script:
+        - dnf install -y --setopt=install_weak_deps=False python3 openssh-clients
+        - chmod 400 $RSYNC_KEY_PATH
+        - ssh-keygen -y -f $RSYNC_KEY_PATH > $RSYNC_KEY_PATH.pub
+        - .gitlab/ci/prepare-docs-upload-env.sh "$RSYNC_KEY_PATH"
+        # Compute the major.minor version from the tag.
+        - 'version="$( echo "$CI_COMMIT_TAG" | sed -e "s/^v//" | cut -d. -f1,2 )"'
+        - 'export RSYNC_DESTINATION="VTKDoxygen/release/${version}/html"'
+        # Create the parent directory structure on the remote server
+        - 'ssh -i $RSYNC_KEY_PATH -o StrictHostKeyChecking=no kitware@web.kitware.com "mkdir -p /home/kitware/filepush/VTKDoxygen/release/${version}"'
+    after_script:
+        - chmod 400 $RSYNC_KEY_PATH
+        - ssh-keygen -y -f $RSYNC_KEY_PATH > $RSYNC_KEY_PATH.pub
+        - .gitlab/ci/prepare-docs-upload-env.sh "$RSYNC_KEY_PATH"
+        - 'version="$( echo "$CI_COMMIT_TAG" | sed -e "s/^v//" | cut -d. -f1,2 )"'
+        - .gitlab/ci/update_doc_versions.sh "${version}"
+    variables:
+        RSYNC_KEY_PATH: $RSYNC_DOCS_KEY
+        RSYNC_DELETE_ARG: --delete
+
+    interruptible: false
+
 .rsync_upload_wheel_sdk:
     extends: .rsync_upload
     environment:
@@ -62,7 +88,7 @@
         - pipx ensurepath
         - source $HOME/.bash_profile
         - pipx install twine==6.1.0
-        - twine upload -u __token__ -p $PYPI_UPLOAD_TOKEN dist/*
+        - twine upload --verbose -u __token__ -p $PYPI_UPLOAD_TOKEN dist/*
 
 .pypi_vtk_upload:
     image: "fedora:42"
@@ -79,7 +105,7 @@
         - pipx ensurepath
         - source $HOME/.bash_profile
         - pipx install twine==6.1.0
-        - twine upload -u gitlab-ci-token -p $CI_JOB_TOKEN --repository-url https://gitlab.kitware.com/api/v4/projects/$CI_PROJECT_ID/packages/pypi dist/*
+        - twine upload --verbose -u gitlab-ci-token -p $CI_JOB_TOKEN --repository-url https://gitlab.kitware.com/api/v4/projects/$CI_PROJECT_ID/packages/pypi dist/*
 
 .generic_vtk_wasm_emscripten_linux_upload:
     stage: upload

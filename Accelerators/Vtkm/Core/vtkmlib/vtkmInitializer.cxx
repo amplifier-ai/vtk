@@ -9,8 +9,6 @@
 VTK_ABI_NAMESPACE_BEGIN
 void InitializeVTKm()
 {
-// Kokkos enabled devices needs to be initialized
-#ifdef VTK_USE_KOKKOS
   static bool isInitialized{ false };
   if (!isInitialized)
   {
@@ -19,7 +17,6 @@ void InitializeVTKm()
     viskores::cont::Initialize(argc, const_cast<char**>(argv));
     isInitialized = true;
   }
-#endif
 }
 
 vtkmInitializer::vtkmInitializer()

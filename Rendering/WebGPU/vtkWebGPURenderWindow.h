@@ -68,6 +68,25 @@ public:
    */
   void Initialize() override;
 
+  /**
+   * Call DestroyWindow.
+   *
+   * On X11, this performs a specific cleanup ordering to work around an NVIDIA Vulkan
+   * driver bug where GLX extension initialization is deferred until device destruction,
+   * causing the driver to touch a freed Display connection if the Display is closed too
+   * early:
+   *   1. DestroyWindow()                    - destroy the X11 window; Display stays open.
+   *   2. vtkWebGPUConfiguration::FinalizeDevice() - destroy the Vulkan device/adapter while
+   *      keeping the shared WGPUInstance alive, so the ICD shared library remains loaded.
+   *   3. Close the X11 Display connection while the ICD is still resident in memory.
+   *   4. vtkWebGPUConfiguration::Finalize()  - release the WGPUInstance, which unloads the
+   *      ICD now that the Display is already closed.
+   *
+   * @sa vtkWebGPUConfiguration::FinalizeDevice(), vtkWebGPUConfiguration::Finalize(),
+   *     WGPUFinalize()
+   */
+  void Finalize() override;
+
   void Start() override;
 
   /**
@@ -147,6 +166,7 @@ public:
    * Get the Ids data from the last render.
    */
   vtkTypeUInt32* GetIdsData(int x1, int y1, int x2, int y2);
+  VTK_MAYSUSPEND
   void GetIdsData(int x1, int y1, int x2, int y2, vtkTypeUInt32Array* data);
   ///@}
 
@@ -182,8 +202,20 @@ public:
    */
   void ReleaseGraphicsResources(vtkWindow*) override;
 
+  ///@{
+  /**
+   * Set/Get the webgpu configuration instance.
+   *
+   * @note This property is excluded from marshalling because it describes a live
+   * device/adapter; replaying it into an initialized window would tear down and
+   * recreate the device.
+   */
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_INTERNAL)
+  VTK_MAYSUSPEND
   void SetWGPUConfiguration(vtkWebGPUConfiguration* config);
+  VTK_MARSHALEXCLUDE(VTK_MARSHAL_EXCLUDE_REASON_IS_INTERNAL)
   vtkGetSmartPointerMacro(WGPUConfiguration, vtkWebGPUConfiguration);
+  ///@}
 
   /**
    * Get a database of all WebGPU shader source codes in VTK.
@@ -289,7 +321,6 @@ public:
    * ...) and added to the render window by calling AddRenderTextureView()
    */
   vtkSmartPointer<vtkWebGPUComputeRenderTexture> AcquireDepthBufferRenderTexture();
-
   vtkSmartPointer<vtkWebGPUComputeRenderTexture> AcquireFramebufferRenderTexture();
   ///@}
 
@@ -304,11 +335,6 @@ public:
     Ids,
   };
   vtkSmartPointer<vtkImageData> SaveAttachmentToVTI(AttachmentTypeForVTISnapshot type);
-
-  /**
-   * Set the interactor for the window
-   */
-  void SetInteractor(vtkRenderWindowInteractor*) override;
 
   /**
    * Ensure RenderWindow's display is opened
@@ -334,29 +360,210 @@ protected:
    */
   virtual std::string MakeDefaultWindowNameWithBackend();
 
+private:
+  // For accessing SubmitCommandBuffer to submit custom prop render work
+  friend class vtkWebGPUComputeOcclusionCuller;
+
+  vtkWebGPURenderWindow(const vtkWebGPURenderWindow&) = delete;
+  void operator=(const vtkWebGPURenderWindow&) = delete;
+
+  /**
+   * Sets up the compute pipeline of the vtkWebGPURenderer of this render window so that they use
+   * the same Adapter and Device as this render window
+   */
+  void InitializeRendererComputePipelines();
+
+  /**
+   * Submits command buffers to the device queue. This allows the execution of additional custom
+   * commands by the render window.
+   */
+  void SubmitCommandBuffer(int count, wgpu::CommandBuffer* commandBuffer);
+
+  /**
+   * Dispatches all the post-render compute pipelines of all the renderers of this render window
+   */
+  void PostRenderComputePipelines();
+
+  /**
+   * Renders actors of the renderers of this render window that were "deferred" to being rendered
+   * after the main rasterization pass
+   */
+  void PostRasterizationRender();
+
+  struct ComponentMapping
+  {
+    int Map[4];
+    int InComponents;
+    int OutComponents;
+    bool Valid;
+  };
+
+  /**
+   * Get the mapping of components to go from the format's layout (rgba, bgra, rgb, etc) to an
+   * RGB, RGBA layout. The mapping is stored in the ComponentMapping struct, which also contains the
+   * number of input and output components, as well as a boolean indicating whether the mapping is
+   * valid or not (i.e. if the format has enough components to satisfy the desired layout).
+   * Here is an example:
+   * 1. If `format` is bgra, the mapping will be [2, 1, 0, 3] (mapping the first component of the
+   * desired layout, r, to the third component of the format, b, and so on), the number of input
+   * components will be 4 (rgba) and the number of output components will be 4 (bgra).
+   *
+   * This method only supports the following formats:
+   * - RGBA8Unorm
+   * - RGBA32Uint
+   * - BGRA8Unorm
+   */
+  ComponentMapping GetComponentMapping(wgpu::TextureFormat format, int desiredOutComponents);
+
+  template <typename TOutput, typename TInput>
+  struct PixelReadbackCallbackData
+  {
+    TOutput* OutputValues;
+    uint32_t Width, Height;
+    ComponentMapping Mapping;
+    std::function<TOutput(TInput)> Converter;
+  };
+
+  /**
+   * Internal method to read back texture data from the GPU Texture object.
+   *
+   * The method takes in the texture to read from, the format in which to the texture must be
+   * interpreted, the coordinates of the rectangle to read, the desired number of output components
+   * (3 for RGB, 4 for RGBA) and an optional converter function to convert the input values (as read
+   * from the texture) to the output values (as returned by the method). The method returns a
+   * pointer to an array of TOutput values containing the pixel data in the desired layout (RGB,
+   * RGBA) and with the desired number of components, which is allocated on the heap and should be
+   * deleted by the caller. The method uses the GetComponentMapping() method to get the mapping of
+   * components to go from the format's layout to the desired layout (RGB, RGBA), and then reads
+   * back the texture data, applies the mapping and the converter function (if provided) and fills
+   * the output array with the resulting values.
+   */
+  template <typename TOutput, typename TInput>
+  TOutput* GetTextureDataInternal(wgpu::Texture texture, wgpu::TextureFormat format, int x1, int y1,
+    int x2, int y2, const ComponentMapping& componentMapping,
+    std::function<TOutput(TInput)> converter = nullptr);
+
+  /**
+   * Flips the y coordinate since WebGPU's texture origin is top-left, while VTK's is bottom-left.
+   * The input y coordinate is expected to be in VTK's coordinate system, and the output will be in
+   * WebGPU's coordinate system.
+   */
+  std::uint32_t FlipY(std::uint32_t y);
+
+  /**
+   * Internal method to read back texture data from the GPU Texture object. This method is used by
+   * GetTextureDataInternal() and is responsible for the actual interaction with the WebGPU API to
+   * read the texture data. The method takes in the texture to read from, the format in which to the
+   * texture must be interpreted, the mip level and aspect of the texture to read, the coordinates
+   * of the rectangle to read, as well as a callback function that will be called when the texture
+   * data is available, with a pointer to the mapped data, the number of bytes per row and a user
+   * data pointer that can be used to pass any additional information needed in the callback.
+   */
+  void ReadTextureFromGPU(wgpu::Texture& wgpuTexture, wgpu::TextureFormat format,
+    std::size_t mipLevel, wgpu::TextureAspect aspect, wgpu::Origin3D offsets,
+    wgpu::Extent3D extents, TextureMapCallback callback, void* userData);
+
+  /**
+   * Convenient method to read back full extent of a texture from the GPU. This calls the
+   * more general ReadTextureFromGPU() method with origin = {0, 0, 0} and extents = {texture width,
+   * texture height, texture depth}.
+   */
+  void ReadTextureFromGPU(wgpu::Texture& wgpuTexture, wgpu::TextureFormat format,
+    std::size_t mipLevel, wgpu::TextureAspect aspect, TextureMapCallback callback, void* userData);
+
+  /**
+   * Initialize the internal vtkWebGPUConfiguration object, which creates the WebGPU device and
+   * adapter. This method is called in Initialize() after the window has been created. Returns true
+   * if the initialization succeeded, false otherwise.
+   */
   bool WGPUInit();
+
+  /**
+   * Finalize the WebGPU context by releasing all WebGPU resources and resetting the internal
+   * state. Implements the cleanup sequence documented in Finalize() to work around the
+   * NVIDIA X11/Vulkan driver bug (see comments in the .cxx implementation for details).
+   *
+   * @sa Finalize()
+   */
   void WGPUFinalize();
 
+  /**
+   * Create the surface for this render window. This is necessary to be able to present rendered
+   * images to the screen. The surface is created on demand when Initialize() is called, and
+   * destroyed in DestroyWindow().
+   */
   void CreateSurface();
+
+  /**
+   * Configure the surface with mailbox presentation mode and the preferred texture format.
+   */
   void ConfigureSurface();
+
+  /**
+   * Unconfigure the surface.
+   * This is called when the render window is resized, before reconfiguring the surface with the new
+   * size.
+   */
   void UnconfigureSurface();
 
+  ///@{
+  /**
+   * Create/Destroy the color attachment and its view for the offscreen render target. The color
+   * attachment is used for the main color rendering of the scene, and is later copied to the
+   * surface's current texture for presentation.
+   */
   void CreateOffscreenColorAttachment();
   void DestroyOffscreenColorAttachment();
+  ///@}
 
+  ///@{
+  /**
+   * Create/Destroy the selector IDs attachment and its view for the offscreen render target. The
+   * selector IDs attachment is used to store the selector IDs of the rendered objects, which can be
+   * read back to perform picking.
+   */
   void CreateIdsAttachment();
   void DestroyIdsAttachment();
+  ///@}
 
+  ///@{
+  /**
+   * Create/Destroy the depth-stencil attachment and its view for the offscreen render target. The
+   * depth-stencil attachment is used for depth testing during rendering, and can also be read back
+   * or sampled from to perform operations such as picking or post-processing effects.
+   */
   void CreateDepthStencilAttachment();
   void DestroyDepthStencilAttachment();
+  ///@}
 
+  ///@{
+  /**
+   * Create/Destroy the render pipeline used to copy the offscreen color attachment to the surface's
+   * current texture for presentation.
+   */
   void CreateColorCopyPipeline();
   void DestroyColorCopyPipeline();
+  ///@}
 
+  /**
+   * Recreate the render textures of this render window. This is necessary when the render window is
+   * resized, since the size of the render textures must match the size of the surface's current
+   * texture for presentation.
+   */
   void RecreateComputeRenderTextures();
 
+  /**
+   * Render the offscreen color attachment to the surface's current texture for presentation. This
+   * is done in the `Frame()` method after all rendering and post-processing is done, and involves
+   * using the color copy render pipeline to copy the offscreen color attachment to the surface's
+   * current texture, which is then presented to the screen.
+   */
   void RenderOffscreenTexture();
 
+  /**
+   * Sync the render window's properties with the hardware window.
+   * WindowName, Size, and Coverable properties are synced.
+   */
   virtual void SyncWithHardware();
 
   bool RenderTexturesSetup = false;
@@ -411,69 +618,6 @@ protected:
   int DepthCopyTextureIndex = 0;
 
   int ScreenSize[2];
-
-private:
-  // For accessing SubmitCommandBuffer to submit custom prop render work
-  friend class vtkWebGPUComputeOcclusionCuller;
-
-  vtkWebGPURenderWindow(const vtkWebGPURenderWindow&) = delete;
-  void operator=(const vtkWebGPURenderWindow&) = delete;
-
-  /**
-   * Sets up the compute pipeline of the vtkWebGPURenderer of this render window so that they use
-   * the same Adapter and Device as this render window
-   */
-  void InitializeRendererComputePipelines();
-
-  /**
-   * Submits command buffers to the device queue. This allows the execution of additional custom
-   * commands by the render window.
-   */
-  void SubmitCommandBuffer(int count, wgpu::CommandBuffer* commandBuffer);
-
-  /**
-   * Dispatches all the post-render compute pipelines of all the renderers of this render window
-   */
-  void PostRenderComputePipelines();
-
-  /**
-   * Renders actors of the renderers of this render window that were "deferred" to being rendered
-   * after the main rasterization pass
-   */
-  void PostRasterizationRender();
-
-  struct ComponentMapping
-  {
-    int Map[4];
-    int InComponents;
-    int OutComponents;
-    bool Valid;
-  };
-
-  ComponentMapping GetComponentMapping(wgpu::TextureFormat format, int desiredOutComponents);
-
-  template <typename TOutput, typename TInput>
-  struct PixelReadbackCallbackData
-  {
-    TOutput* OutputValues;
-    uint32_t Width, Height;
-    ComponentMapping Mapping;
-    std::function<TOutput(TInput)> Converter;
-  };
-
-  template <typename TOutput, typename TInput>
-  TOutput* GetTextureDataInternal(wgpu::Texture texture, wgpu::TextureFormat format, int x1, int y1,
-    int x2, int y2, const ComponentMapping& componentMapping,
-    std::function<TOutput(TInput)> converter = nullptr);
-
-  std::uint32_t FlipY(std::uint32_t y);
-
-  void ReadTextureFromGPU(wgpu::Texture& wgpuTexture, wgpu::TextureFormat format,
-    std::size_t mipLevel, wgpu::TextureAspect aspect, wgpu::Origin3D offsets,
-    wgpu::Extent3D extents, TextureMapCallback callback, void* userData);
-
-  void ReadTextureFromGPU(wgpu::Texture& wgpuTexture, wgpu::TextureFormat format,
-    std::size_t mipLevel, wgpu::TextureAspect aspect, TextureMapCallback callback, void* userData);
 
   // Render textures acquired by the user on this render window. They are kept here in case the
   // render window is resized, in which case, we'll need to resize the render textures --> We need

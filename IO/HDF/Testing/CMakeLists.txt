@@ -1,28 +1,29 @@
 vtk_module_test_data(
-  Data/mandelbrot-vti.hdf
-  Data/mandelbrot.vti
+  Data/vtkHDF/mandelbrot-vti.vtkhdf
+  Data/vtkHDF/mandelbrot.vti
   Data/can.vtu
   Data/can.pvtu
   Data/can/can_0.vtu
   Data/can/can_1.vtu
   Data/can/can_2.vtu
-  Data/can-vtu.hdf
-  Data/can-pvtu.hdf
-  Data/amr_gaussian_pulse.hdf
-  Data/amr_gaussian_pulse.vthb
-  Data/amr_gaussian_pulse/amr_gaussian_pulse_0.vti
-  Data/amr_gaussian_pulse/amr_gaussian_pulse_1.vti
-  Data/amr_gaussian_pulse/amr_gaussian_pulse_2.vti
-  Data/test_poly_data.hdf
+  Data/vtkHDF/can-vtu.vtkhdf
+  Data/vtkHDF/can-pvtu.vtkhdf
+  Data/vtkHDF/amr_gaussian_pulse.vtkhdf
+  Data/vtkHDF/amr_gaussian_pulse.vthb
+  Data/vtkHDF/amr_gaussian_pulse/amr_gaussian_pulse_0.vti
+  Data/vtkHDF/amr_gaussian_pulse/amr_gaussian_pulse_1.vti
+  Data/vtkHDF/amr_gaussian_pulse/amr_gaussian_pulse_2.vti
+  Data/vtkHDF/test_poly_data.vtkhdf
   Data/vtkHDF/temporal_partitioned_polydata_cache.vtkhdf
   Data/vtkHDF/temporal_polydata_field_data.vtkhdf
   Data/vtkHDF/temporal_partitioned_ug.vtkhdf
-  Data/temporal_unstructured_grid.vtkhdf
-  Data/transient_harmonics.hdf
-  Data/transient_sphere.hdf
-  Data/wavelet_cell_data.hdf
-  Data/wavelet_cell_data.vti
-  Data/hdf_poly_data_twin.vtp
+  Data/vtkHDF/temporal_unstructured_grid.vtkhdf
+  Data/vtkHDF/temporal_harmonics.vtkhdf
+  Data/vtkHDF/temporal_sphere.vtkhdf
+
+  Data/vtkHDF/wavelet_cell_data.vtkhdf
+  Data/vtkHDF/wavelet_cell_data.vti
+  Data/vtkHDF/hdf_poly_data_twin.vtp
   Data/vtkHDF/temporal_partitioned_polydata_cache_0.vtpd
   Data/vtkHDF/temporal_partitioned_polydata_cache_1.vtpd
   Data/vtkHDF/temporal_partitioned_polydata_cache_2.vtpd
@@ -90,6 +91,7 @@ vtk_module_test_data(
 
   Data/vtkHDF/sanitization.vtu
 
+  Data/vtkHDF/nocells_part.vtkhdf
   Data/vtkHDF/null_term_string.vtkhdf
   Data/vtkHDF/utf8_string.vtkhdf
   Data/vtkHDF/test_multiblock_static_multipiece.vtkhdf
@@ -107,12 +109,12 @@ vtk_module_test_data(
   Data/vtkHDF/distributed/cone1.vtu
   Data/vtkHDF/distributed/sphere1.vtu
 
-  Data/vtkHDF/test_composite.hdf
-  Data/vtkHDF/test_composite.hdf_000000.vtpc
-  Data/vtkHDF/test_composite.hdf_000000/test_composite.hdf_000000_0_0.vtp
-  Data/vtkHDF/test_composite.hdf_000000/test_composite.hdf_000000_1_0.htg
-  Data/vtkHDF/test_composite.hdf_000000/test_composite.hdf_000000_1_0.vtu
-  Data/vtkHDF/test_composite.hdf_000000/test_composite.hdf_000000_2_0.vti
+  Data/vtkHDF/test_composite.vtkhdf
+  Data/vtkHDF/test_composite.vtkhdf_000000.vtpc
+  Data/vtkHDF/test_composite.vtkhdf_000000/test_composite.vtkhdf_000000_0_0.vtp
+  Data/vtkHDF/test_composite.vtkhdf_000000/test_composite.vtkhdf_000000_1_0.htg
+  Data/vtkHDF/test_composite.vtkhdf_000000/test_composite.vtkhdf_000000_1_0.vtu
+  Data/vtkHDF/test_composite.vtkhdf_000000/test_composite.vtkhdf_000000_2_0.vti
 
   Data/vtkHDF/dummy_pdc_structure.vtpc
   Data/vtkHDF/multi_ds_pdc.vtpc
@@ -138,15 +140,29 @@ vtk_module_test_data(
   Data/vtkHDF/Transient/transient_expected_overlapping_amr_2/transient_expected_overlapping_amr_2_0.vti
   Data/vtkHDF/Transient/transient_expected_overlapping_amr_2/transient_expected_overlapping_amr_2_1.vti
 
+  Data/vtkHDF/table.vtt
+
   Data/vtkHDF/composite_partial_array.vtkhdf
 
   Data/vtkHDF/multipiece_temporal_htg.vtkhdf
   Data/vtkHDF/sphere_onepiece.vtkhdf
-  Data/vtkHDF/multipiece_htg.hdf
-  Data/vtkHDF/randomhtg.hdf
-  Data/vtkHDF/simple_htg.hdf
-  Data/vtkHDF/shell_3d.hdf
+  Data/vtkHDF/sph4_mb.vtkhdf
+  Data/vtkHDF/sph4_mb_part0.vtkhdf
+  Data/vtkHDF/sph4_mb_part1.vtkhdf
+  Data/vtkHDF/sph4_mb_part2.vtkhdf
+  Data/vtkHDF/sph4_mb_part3.vtkhdf
+
+  Data/vtkHDF/multipiece_htg.vtkhdf
+  Data/vtkHDF/randomhtg.vtkhdf
+  Data/vtkHDF/htg_3parts_coords.vtkhdf
+  Data/vtkHDF/simple_htg.vtkhdf
+  Data/vtkHDF/shell_3d.vtkhdf
   Data/vtkHDF/temporal_htg.vtkhdf
+
+  Data/vtkHDF/temporal_rectilinear.vtkhdf
+  Data/vtkHDF/temporal_structured.vtkhdf
+  Data/vtkHDF/structured_coords.vtkhdf
+
   Data/vtkHDF/temporal_image.vtkhdf
   Data/vtkHDF/temporal_image_0.vti
   Data/vtkHDF/temporal_image_1.vti

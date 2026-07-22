@@ -6,7 +6,6 @@
 #include "vtkCellArray.h"
 #include "vtkCellData.h"
 #include "vtkCompositeDataSet.h"
-#include "vtkDataObjectMeshCache.h"
 #include "vtkIdTypeArray.h"
 #include "vtkIntArray.h"
 #include "vtkPartitionedDataSetCollection.h"

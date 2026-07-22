@@ -48,7 +48,7 @@ private:
     try
     {
       // Run std::format
-      std_format_output = fmt::format(std_format, args...);
+      std_format_output = fmt::format(fmt::runtime(std_format), args...);
     }
     catch (const std::exception& e)
     {
@@ -67,8 +67,7 @@ public:
     const std::tuple<Args...>& args)
   {
     return std::apply([&](Args... unpacked_args)
-      { return validate_printf_format(printf_format, std_format, unpacked_args...); },
-      args);
+      { return validate_printf_format(printf_format, std_format, unpacked_args...); }, args);
   }
 };
 
@@ -702,7 +701,7 @@ static int run_comprehensive_format_tests()
               std_format_result.c_str());
             std::exit(EXIT_FAILURE);
           }
-          // Test unconditional converstion to std::format
+          // Test unconditional conversion to std::format
           const std::string converted_format = vtk::to_std_format(test.printf_format);
           if (converted_format != test.expected_std_format)
           {

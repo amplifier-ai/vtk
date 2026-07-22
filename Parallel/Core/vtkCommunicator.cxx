@@ -147,6 +147,18 @@ int vtkCommunicator::Send(vtkDataObject* data, int remoteHandle, int tag)
   // messages with the specific source and mangled tag, which are guaranteed to
   // be received in the correct order.
   static int tagMangler = 1000;
+  int tagMaxValue = this->GetTagMaxValue();
+  if (tagMaxValue < 0)
+  {
+    vtkWarningMacro(<< "Tag maximum value could not be recovered. Cannot send "
+                    << data->GetClassName());
+    return 0;
+  }
+  if ((tag + tagMangler) >= tagMaxValue)
+  {
+    // Reset the mangler to make sure it stays in the tag value range.
+    tagMangler = 1000;
+  }
   int mangledTag = tag + tagMangler++;
   int header[2];
   header[0] = this->LocalProcessId;
@@ -218,6 +230,18 @@ int vtkCommunicator::Send(vtkDataArray* data, int remoteHandle, int tag)
   // messages with the specific source and mangled tag, which are guaranteed to
   // be received in the correct order.
   static int tagMangler = 1000;
+  int tagMaxValue = this->GetTagMaxValue();
+  if (tagMaxValue < 0)
+  {
+    vtkWarningMacro(<< "Tag maximum value could not be recovered. Cannot send "
+                    << data->GetClassName());
+    return 0;
+  }
+  if ((tag + tagMangler) >= tagMaxValue)
+  {
+    // Reset the mangler to make sure it stays in the tag value range.
+    tagMangler = 1000;
+  }
   int mangledTag = tag + tagMangler++;
   int header[2];
   header[0] = this->LocalProcessId;
@@ -495,11 +519,9 @@ int vtkCommunicator::Receive(vtkDataArray* data, int remoteHandle, int tag)
 int vtkCommunicator::MarshalDataObject(vtkDataObject* object, vtkCharArray* buffer)
 {
   buffer->Initialize();
-  buffer->SetNumberOfComponents(1);
 
   if (object == nullptr)
   {
-    buffer->SetNumberOfTuples(0);
     return 1;
   }
 
@@ -792,6 +814,63 @@ void vtkCommunicator::Barrier()
     this->Send(&junk, 1, 0, BARRIER_TAG);
   }
   this->Broadcast(&junk, 1, 0);
+}
+
+//------------------------------------------------------------------------------
+int vtkCommunicator::AllToAllVVoidArray(const void* sendBuffer, const int* sendCounts,
+  const int* sendOffsets, void* recvBuffer, const int* recvCounts, const int* recvOffsets, int type)
+{
+  int result = 1;
+
+  int typeSize = 1;
+  switch (type)
+  {
+    vtkTemplateMacro(typeSize = sizeof(VTK_TT));
+  }
+
+  for (int pid = 0; pid < this->NumberOfProcesses; ++pid)
+  {
+    if (pid != this->LocalProcessId)
+    {
+      // Sending to other processes
+      if (sendCounts[pid] > 0)
+      {
+        result &=
+          this->SendVoidArray((void*)((const char*)(sendBuffer) + typeSize * sendOffsets[pid]),
+            sendCounts[pid], type, pid, ALL_TO_ALLV_TAG);
+      }
+    }
+    else
+    {
+      // Receiving from other processes
+      for (int spid = 0; spid < this->NumberOfProcesses; ++spid)
+      {
+        if (recvCounts[spid] > 0)
+        {
+          if (spid != this->LocalProcessId)
+          {
+            result &= this->ReceiveVoidArray(
+              (void*)((const char*)(recvBuffer) + typeSize * recvOffsets[spid]), recvCounts[spid],
+              type, spid, ALL_TO_ALLV_TAG);
+          }
+          else
+          {
+            // To receive the data from our process ID, we just have to copy what we sent
+            if (recvCounts[spid] != sendCounts[spid])
+            {
+              return false;
+            }
+
+            memcpy((void*)((const char*)(recvBuffer) + typeSize * recvOffsets[spid]),
+              (void*)((const char*)(sendBuffer) + typeSize * sendOffsets[spid]),
+              typeSize * sendCounts[spid]);
+          }
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 //------------------------------------------------------------------------------

@@ -11,6 +11,7 @@
 #include "vtkWebGPUCellToPrimitiveConverter.h"
 
 #include "vtk_wgpu.h"
+#include <unordered_set>
 
 VTK_ABI_NAMESPACE_BEGIN
 
@@ -19,6 +20,7 @@ class vtkMatrix4x4;
 class vtkViewport;
 class vtkActor2D;
 class vtkWebGPUPolyDataMapper2D;
+class vtkWebGPURenderer;
 class vtkWebGPURenderTextureDeviceResource;
 class vtkWebGPURenderWindow;
 
@@ -137,6 +139,7 @@ class VTKRENDERINGWEBGPU_NO_EXPORT vtkWebGPUPolyDataMapper2DInternals
   wgpu::BindGroupLayout MeshAttributeBindGroupLayout;
 
   vtkNew<vtkWebGPUCellToPrimitiveConverter> CellConverter;
+  std::unordered_set<vtkWebGPURenderer*> Renderers;
 
   /**
    * Create a bind group layout for the mesh attribute bind group.

@@ -7,24 +7,11 @@
 #include "vtkImageProgressIterator.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
+#include "vtkMathUtilities.h"
 #include "vtkObjectFactory.h"
-
-#include <algorithm>
 
 VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkImageBinaryThreshold);
-
-namespace
-{
-
-template <typename T>
-double ClampToImageScalarTypeMinMax(double value, vtkImageData* image)
-{
-  double clampedValue = std::clamp(value, image->GetScalarTypeMin(), image->GetScalarTypeMax());
-  return static_cast<T>(clampedValue);
-}
-
-}
 
 //------------------------------------------------------------------------------
 int vtkImageBinaryThreshold::RequestInformation(vtkInformation* vtkNotUsed(request),
@@ -57,7 +44,7 @@ int vtkImageBinaryThreshold::RequestInformation(vtkInformation* vtkNotUsed(reque
 // This templated function executes the filter for any type of data.
 template <class IT, class OT>
 void vtkImageThresholdExecute(vtkImageBinaryThreshold* self, vtkImageData* inData,
-  vtkImageData* outData, int outExt[6], int id, IT*, OT*)
+  vtkImageData* outData, VTK_FUTURE_CONST int outExt[6], int id, IT*, OT*)
 {
   vtkImageIterator<IT> inIt(inData, outExt);
   vtkImageProgressIterator<OT> outIt(outData, outExt, self, id);
@@ -71,11 +58,11 @@ void vtkImageThresholdExecute(vtkImageBinaryThreshold* self, vtkImageData* inDat
     thresholdFunction == vtkImageBinaryThreshold::ThresholdFunction::THRESHOLD_UPPER
     ? VTK_FLOAT_MAX
     : self->GetUpperThreshold();
-  IT lowerThreshold = ::ClampToImageScalarTypeMinMax<IT>(filterLowerThreshold, inData);
-  IT upperThreshold = ::ClampToImageScalarTypeMinMax<IT>(filterUpperThreshold, inData);
+  IT lowerThreshold = vtkMathUtilities::SafeCastFromDouble<IT>(filterLowerThreshold);
+  IT upperThreshold = vtkMathUtilities::SafeCastFromDouble<IT>(filterUpperThreshold);
 
-  OT inValue = ::ClampToImageScalarTypeMinMax<OT>(self->GetInValue(), outData);
-  OT outValue = ::ClampToImageScalarTypeMinMax<OT>(self->GetOutValue(), outData);
+  OT inValue = vtkMathUtilities::SafeCastFromDouble<OT>(self->GetInValue());
+  OT outValue = vtkMathUtilities::SafeCastFromDouble<OT>(self->GetOutValue());
   int replaceIn = self->GetReplaceIn();
   int replaceOut = self->GetReplaceOut();
   IT temp;
@@ -125,7 +112,7 @@ void vtkImageThresholdExecute(vtkImageBinaryThreshold* self, vtkImageData* inDat
 //------------------------------------------------------------------------------
 template <class T>
 void vtkImageThresholdExecute1(vtkImageBinaryThreshold* self, vtkImageData* inData,
-  vtkImageData* outData, int outExt[6], int id, T*)
+  vtkImageData* outData, VTK_FUTURE_CONST int outExt[6], int id, T*)
 {
   switch (outData->GetScalarType())
   {
@@ -140,7 +127,7 @@ void vtkImageThresholdExecute1(vtkImageBinaryThreshold* self, vtkImageData* inDa
 //------------------------------------------------------------------------------
 void vtkImageBinaryThreshold::ThreadedRequestData(vtkInformation* vtkNotUsed(request),
   vtkInformationVector** vtkNotUsed(inputVector), vtkInformationVector* vtkNotUsed(outputVector),
-  vtkImageData*** inData, vtkImageData** outData, int outExt[6], int id)
+  vtkImageData*** inData, vtkImageData** outData, VTK_FUTURE_CONST int outExt[6], int id)
 {
   switch (inData[0][0]->GetScalarType())
   {

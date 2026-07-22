@@ -392,23 +392,53 @@ int vtkGenericEnSightReader::DetermineEnSightVersion(int quiet)
             if (strncmp(line, "model:", 6) == 0)
             {
               const std::string_view lineView(line);
-              if (auto resultSet0 = vtk::scan<std::string_view, int, int, std::string>(
-                    lineView, " {:s} {:d} {:d} {:s}"))
+              std::string_view dummy, timeSetView, fileSetView;
+              std::string pathString;
+              if (auto resultSet0 =
+                    vtk::scan<std::string_view, std::string_view, std::string_view, std::string>(
+                      lineView, " {:s} {:s} {:s} {:[^\n\r]}"))
               {
-                timeSet = std::get<1>(resultSet0->values());
-                fileSet = std::get<2>(resultSet0->values());
-                this->SetGeometryFileName(std::get<3>(resultSet0->values()).c_str());
+                std::tie(dummy, timeSetView, fileSetView, pathString) = resultSet0->values();
               }
               else if (auto resultSet1 =
-                         vtk::scan<std::string_view, int, std::string>(lineView, " {:s} {:d} {:s}"))
+                         vtk::scan<std::string_view, std::string_view, std::string_view>(
+                           lineView, " {:s} {:s} {:[^\n\r]}"))
               {
-                timeSet = std::get<1>(resultSet1->values());
-                this->SetGeometryFileName(std::get<2>(resultSet1->values()).c_str());
+                std::tie(dummy, timeSetView, pathString) = resultSet1->values();
               }
-              else if (auto resultSet2 =
-                         vtk::scan<std::string_view, std::string>(lineView, " {:s} {:s}"))
+              else if (auto resultSet2 = vtk::scan<std::string_view, std::string_view>(
+                         lineView, " {:s} {:[^\n\r]}"))
               {
-                this->SetGeometryFileName(std::get<1>(resultSet2->values()).c_str());
+                std::tie(dummy, pathString) = resultSet2->values();
+              }
+
+              if (!timeSetView.empty())
+              {
+                auto timeSetResult = vtk::scan_int<int>(timeSetView);
+                if (timeSetResult)
+                {
+                  timeSet = timeSetResult->value();
+                }
+                else
+                {
+                  vtkErrorMacro("Could not parse time set from line: '" << line << "'");
+                }
+              }
+              if (!fileSetView.empty())
+              {
+                auto fileSetResult = vtk::scan_int<int>(fileSetView);
+                if (fileSetResult)
+                {
+                  fileSet = fileSetResult->value();
+                }
+                else
+                {
+                  vtkErrorMacro("Could not parse file set from line: '" << line << "'");
+                }
+              }
+              if (!pathString.empty())
+              {
+                this->SetGeometryFileName(pathString.c_str());
               }
             } // geometry file name set
             delete this->IS;
@@ -501,8 +531,8 @@ int vtkGenericEnSightReader::DetermineEnSightVersion(int quiet)
             delete[] fileName;
             return vtkGenericEnSightReader::ENSIGHT_GOLD;
           } // if we found the geometry section in the case file
-        }   // if ensight gold file
-      }     // if regular ensight file (not master_server)
+        } // if ensight gold file
+      } // if regular ensight file (not master_server)
       else if (subLine1 == "master_server")
       {
         return vtkGenericEnSightReader::ENSIGHT_MASTER_SERVER;
@@ -520,23 +550,60 @@ int vtkGenericEnSightReader::DetermineEnSightVersion(int quiet)
         if (strncmp(line, "model:", 6) == 0)
         {
           const std::string_view lineView(line);
-          if (auto resultSet0 = vtk::scan<std::string_view, int, int, std::string>(
-                lineView, " {:s} {:d} {:d} {:s}"))
+          std::string_view dummy, timeSetView, fileSetView;
+          std::string pathString;
+          if (auto resultSet0 =
+                vtk::scan<std::string_view, std::string_view, std::string_view, std::string>(
+                  lineView, " {:s} {:s} {:s} {:[^\n\r]}"))
           {
-            timeSet = std::get<1>(resultSet0->values());
-            fileSet = std::get<2>(resultSet0->values());
-            this->SetGeometryFileName(std::get<3>(resultSet0->values()).c_str());
+            std::tie(dummy, timeSetView, fileSetView, pathString) = resultSet0->values();
           }
           else if (auto resultSet1 =
-                     vtk::scan<std::string_view, int, std::string>(lineView, " {:s} {:d} {:s}"))
+                     vtk::scan<std::string_view, std::string_view, std::string_view>(
+                       lineView, " {:s} {:s} {:[^\n\r]}"))
           {
-            timeSet = std::get<1>(resultSet1->values());
-            this->SetGeometryFileName(std::get<2>(resultSet1->values()).c_str());
+            std::tie(dummy, timeSetView, pathString) = resultSet1->values();
           }
           else if (auto resultSet2 =
-                     vtk::scan<std::string_view, std::string>(lineView, " {:s} {:s}"))
+                     vtk::scan<std::string_view, std::string_view>(lineView, " {:s} {:[^\n\r]}"))
           {
-            this->SetGeometryFileName(std::get<1>(resultSet2->values()).c_str());
+            std::tie(dummy, pathString) = resultSet2->values();
+          }
+
+          if (!timeSetView.empty())
+          {
+            auto timeSetResult = vtk::scan_int<int>(timeSetView);
+            if (timeSetResult)
+            {
+              timeSet = timeSetResult->value();
+            }
+            else
+            {
+              vtkErrorMacro("Could not parse time set from line: " << line);
+            }
+          }
+          if (!fileSetView.empty())
+          {
+            auto fileSetResult = vtk::scan_int<int>(fileSetView);
+            if (fileSetResult)
+            {
+              fileSet = fileSetResult->value();
+            }
+            else
+            {
+              vtkErrorMacro("Could not parse file set from line: " << line);
+            }
+          }
+          if (!pathString.empty())
+          {
+            this->SetGeometryFileName(pathString.c_str());
+          }
+          else
+          {
+            if (!quiet)
+            {
+              vtkErrorMacro("Could not parse geometry file name from line: " << line);
+            }
           }
         } // geometry file name set
 
@@ -612,8 +679,8 @@ int vtkGenericEnSightReader::DetermineEnSightVersion(int quiet)
         delete[] fileName;
         return vtkGenericEnSightReader::ENSIGHT_6;
       } // if we found the geometry section in the case file
-    }   // not ensight gold
-  }     // if we found the format section in the case file
+    } // not ensight gold
+  } // if we found the format section in the case file
 
   delete[] fileName;
 
@@ -1232,7 +1299,7 @@ int vtkGenericEnSightReader::ReplaceWildcards(char* fileName, int timeSet, int f
   fileNameNum = -10000;
 
   // 'filename numbers: ...'
-  if (subLine == "numbers")
+  if (subLine.substr(0, 7) == "numbers")
   {
     // The filename number(s) may be provided on the line(s) following
     // 'filename numbers:', as is usually the case --- not "inline". Thus we
@@ -1380,7 +1447,7 @@ void vtkGenericEnSightReader::ReplaceWildcardsHelper(char* filename, int num)
   }
 
   char numStr[32];
-  auto result = vtk::format_to_n(numStr, sizeof(numStr), std::string_view(pattern), num);
+  auto result = vtk::format_to_n(numStr, sizeof(numStr), vtk::runtime(pattern), num);
   *result.out = '\0';
 
   int numStrLen = static_cast<int>(strlen(numStr));

@@ -49,16 +49,18 @@ set(test_sources
   TestHyperTreeGridBinary3DContour.cxx
   TestHyperTreeGridBinary3DContourDecomposePolyhedra.cxx
   TestHyperTreeGridBinary3DContourImplicit.cxx,NO_SERDES
-  TestHyperTreeGridBinary3DContourImplicitInteger.cxx,NO_VALID,NO_OUTPUT
+  TestHyperTreeGridBinary3DContourImplicitInteger.cxx,NO_VALID
   TestHyperTreeGridBinary3DFeatureEdges.cxx,LOOSE_VALID
   TestHyperTreeGridBinary3DGeometry.cxx
   TestHyperTreeGridBinaryClipPlanes.cxx
   TestHyperTreeGridBinaryEllipseMaterial.cxx
   TestHyperTreeGridBinaryHyperbolicParaboloidMaterial.cxx
   TestHyperTreeGridEvaluateCoarse.cxx,NO_VALID,NO_OUTPUT
+  TestFeatureEdgesDispatcher.cxx
   TestHyperTreeGridExtractGhostCells.cxx,NO_VALID,NO_OUTPUT
   TestHyperTreeGridGenerateFields.cxx,NO_VALID,NO_OUTPUT
   TestHyperTreeGridGeometryPassCellIds.cxx
+  TestHyperTreeGridGradient.cxx,NO_VALID,NO_OUTPUT
   TestHyperTreeGridPlaneCutter.cxx,NO_VALID,NO_OUTPUT
   TestHyperTreeGridRemoveGhostCells.cxx,NO_VALID,NO_OUTPUT
   TestHyperTreeGridTernary2D.cxx

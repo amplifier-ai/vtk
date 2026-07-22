@@ -421,7 +421,18 @@ void vtkTemporalPathLineFilter::InitializeExecute(vtkDataSet* input, vtkPolyData
 }
 
 //------------------------------------------------------------------------------
-void vtkTemporalPathLineFilter::AccumulateTrails(vtkDataSet* input, vtkDataSet* selection)
+void vtkTemporalPathLineFilter::ClearTrailMarks()
+{
+  for (vtkTemporalPathLineFilterInternals::TrailIterator t = this->Internals->Trails.begin();
+       t != this->Internals->Trails.end(); ++t)
+  {
+    t->second->alive = false;
+    t->second->updated = false;
+  }
+}
+
+//------------------------------------------------------------------------------
+void vtkTemporalPathLineFilter::ProcessTrails(vtkDataSet* input, vtkDataSet* selection)
 {
   vtkPointData* inputPD = input->GetPointData();
 
@@ -451,22 +462,8 @@ void vtkTemporalPathLineFilter::AccumulateTrails(vtkDataSet* input, vtkDataSet* 
       inputPD->GetAbstractArray(this->Internals->TrailFieldNames[i].c_str());
   }
 
-  //
-  // Clear all trails' 'alive' flag so that
-  // 'dead' ones can be removed at the end
-  // Increment Trail marks the trail as alive
-  //
-  for (vtkTemporalPathLineFilterInternals::TrailIterator t = this->Internals->Trails.begin();
-       t != this->Internals->Trails.end(); ++t)
-  {
-    t->second->alive = false;
-    t->second->updated = false;
-  }
-
   ::SelectionIdsWorker worker;
 
-  // This is a way to give limited friendness privileges to the worker without making them friends.
-  // The worker is able to call processTrail without issues if you pass it as a parameter.
   auto processTrail = [this](vtkDataSet* ds, vtkIdType pointId, vtkIdType gid)
   { this->IncrementTrail(this->GetTrail(gid), ds, pointId); };
 
@@ -495,10 +492,11 @@ void vtkTemporalPathLineFilter::AccumulateTrails(vtkDataSet* input, vtkDataSet* 
       IncrementTrail(trail, input, pointId);
     }
   }
+}
 
-  //
-  // check the 'alive' flag and remove any that are dead
-  //
+//------------------------------------------------------------------------------
+void vtkTemporalPathLineFilter::RemoveDeadTrails()
+{
   if (!this->KeepDeadTrails)
   {
     std::vector<vtkIdType> deadIds;
@@ -517,6 +515,14 @@ void vtkTemporalPathLineFilter::AccumulateTrails(vtkDataSet* input, vtkDataSet* 
 }
 
 //------------------------------------------------------------------------------
+void vtkTemporalPathLineFilter::AccumulateTrails(vtkDataSet* input, vtkDataSet* selection)
+{
+  this->ClearTrailMarks();
+  this->ProcessTrails(input, selection);
+  this->RemoveDeadTrails();
+}
+
+//------------------------------------------------------------------------------
 void vtkTemporalPathLineFilter::PostExecute(
   vtkDataSet* input, vtkPolyData* pathLines, vtkPolyData* particles)
 {
@@ -530,15 +536,15 @@ void vtkTemporalPathLineFilter::PostExecute(
   this->TrailId = vtkSmartPointer<vtkFloatArray>::New();
   //
   size_t size = this->Internals->Trails.size();
-  this->LineCoordinates->Allocate(static_cast<vtkIdType>(size * this->MaxTrackLength));
+  this->LineCoordinates->Reserve(static_cast<vtkIdType>(size * this->MaxTrackLength));
   this->Vertices->AllocateEstimate(static_cast<vtkIdType>(size), 1);
-  this->VertexCoordinates->Allocate(static_cast<vtkIdType>(size));
+  this->VertexCoordinates->Reserve(static_cast<vtkIdType>(size));
   this->PolyLines->AllocateEstimate(static_cast<vtkIdType>(2 * size * this->MaxTrackLength), 1);
-  this->TrailId->Allocate(static_cast<vtkIdType>(size * this->MaxTrackLength));
+  this->TrailId->ReserveValues(static_cast<vtkIdType>(size * this->MaxTrackLength));
   this->TrailId->SetName("TrailId");
 
   vtkNew<vtkUnsignedIntArray> trackLength;
-  trackLength->Allocate(static_cast<vtkIdType>(size * this->MaxTrackLength));
+  trackLength->ReserveValues(static_cast<vtkIdType>(size * this->MaxTrackLength));
   trackLength->SetName("TrackLength");
   //
   std::vector<vtkIdType> TempIds(this->MaxTrackLength);

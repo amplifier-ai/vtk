@@ -7,7 +7,9 @@ mark_as_advanced(OpenVDB_CMAKE_PATH)
 list(INSERT CMAKE_MODULE_PATH 0
   "${OpenVDB_CMAKE_PATH}")
 vtk_module_find_package(PRIVATE_IF_SHARED
-  PACKAGE OpenVDB)
+  PACKAGE OpenVDB
+  COMPONENTS
+    openvdb)
 
 set(classes
   vtkOpenVDBWriter

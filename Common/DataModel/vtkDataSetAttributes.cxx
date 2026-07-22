@@ -621,7 +621,7 @@ void vtkDataSetAttributes::SetupForCopy(vtkDataSetAttributes* pd)
 // If sze=0, then use the input DataSetAttributes to create (i.e., find
 // initial size of) new objects; otherwise use the sze variable.
 void vtkDataSetAttributes::InternalCopyAllocate(vtkDataSetAttributes* pd, int ctype, vtkIdType sze,
-  vtkIdType ext, int shallowCopyArrays, bool createNewArrays)
+  vtkIdType vtkNotUsed(ext), int shallowCopyArrays, bool createNewArrays)
 {
   // Create various point data depending upon input
   //
@@ -674,11 +674,11 @@ void vtkDataSetAttributes::InternalCopyAllocate(vtkDataSetAttributes* pd, int ct
         }
         if (sze > 0)
         {
-          newAA->Allocate(sze * aa->GetNumberOfComponents(), ext);
+          newAA->ReserveTuples(sze);
         }
         else
         {
-          newAA->Allocate(aa->GetNumberOfTuples());
+          newAA->ReserveTuples(aa->GetNumberOfTuples());
         }
         vtkDataArray* newDA = vtkArrayDownCast<vtkDataArray>(newAA);
         if (newDA)
@@ -709,7 +709,7 @@ void vtkDataSetAttributes::InternalCopyAllocate(vtkDataSetAttributes* pd, int ct
     for (const auto& i : this->RequiredArrays)
     {
       aa = pd->GetAbstractArray(i);
-      aa->Resize(sze);
+      aa->ReserveTuples(sze);
       this->TargetIndices[i] = i;
     }
   }
@@ -806,7 +806,7 @@ struct CopyDataExplicitToImplicitWorker
   void operator()(vtkIdType startId, vtkIdType endId)
   {
     auto& sourceIds = this->TLSourceIds.Local();
-    sourceIds->SetArray(this->SourceIds->GetPointer(startId), endId - startId, false /* save */);
+    sourceIds->SetList(this->SourceIds->GetPointer(startId), endId - startId, true /* save */);
     for (const int i : this->RequiredArrays)
     {
       vtkAbstractArray* target = this->Dest->GetAbstractArray(this->TargetIndices[i]);
@@ -844,9 +844,9 @@ struct CopyDataExplicitToExplicitWorker
   void operator()(vtkIdType startId, vtkIdType endId)
   {
     auto& sourceIds = this->TLSourceIds.Local();
-    sourceIds->SetArray(this->SourceIds->GetPointer(startId), endId - startId, false /* save */);
+    sourceIds->SetList(this->SourceIds->GetPointer(startId), endId - startId, true /* save */);
     auto& destIds = this->TLDestinationIds.Local();
-    destIds->SetArray(this->DestIds->GetPointer(startId), endId - startId, false /* save */);
+    destIds->SetList(this->DestIds->GetPointer(startId), endId - startId, true /* save */);
 
     for (const int i : this->RequiredArrays)
     {
@@ -903,9 +903,9 @@ void vtkDataSetAttributes::CopyData(
     {
       // This ensures thread safetiness in `InsertTuples` calls that will be performed in parallel.
       vtkAbstractArray* array = this->GetAbstractArray(this->TargetIndices[i]);
-      if (numberOfTuples > array->GetSize() / array->GetNumberOfComponents())
+      if (numberOfTuples > array->GetCapacity() / array->GetNumberOfComponents())
       {
-        array->Resize(numberOfTuples); // this preserves already existing data
+        array->ReserveTuples(numberOfTuples); // this preserves already existing data
       }
       if (numberOfTuples > array->GetNumberOfTuples())
       {
@@ -942,9 +942,9 @@ void vtkDataSetAttributes::CopyData(
     {
       // This ensures thread safetiness in `InsertTuples` calls that will be performed in parallel.
       vtkAbstractArray* array = this->GetAbstractArray(this->TargetIndices[i]);
-      if (numberOfTuples > array->GetSize() / array->GetNumberOfComponents())
+      if (numberOfTuples > array->GetCapacity() / array->GetNumberOfComponents())
       {
-        array->Resize(numberOfTuples); // this preserves already existing data
+        array->ReserveTuples(numberOfTuples); // this preserves already existing data
       }
       if (numberOfTuples > array->GetNumberOfTuples())
       {
@@ -980,9 +980,9 @@ void vtkDataSetAttributes::CopyData(
     {
       // This ensures thread safetiness in `InsertTuples` calls that will be performed in parallel.
       vtkAbstractArray* array = this->GetAbstractArray(this->TargetIndices[i]);
-      if (numberOfTuples > array->GetSize() / array->GetNumberOfComponents())
+      if (numberOfTuples > array->GetCapacity() / array->GetNumberOfComponents())
       {
-        array->Resize(numberOfTuples); // this preserves already existing data
+        array->ReserveTuples(numberOfTuples); // this preserves already existing data
       }
       if (numberOfTuples > array->GetNumberOfTuples())
       {
@@ -1025,7 +1025,7 @@ void vtkDataSetAttributes::InterpolatePoint(
     {
       vtkIdType numIds = ptIds->GetNumberOfIds();
       vtkIdType maxId = ptIds->GetId(0);
-      vtkIdType maxWeight = 0;
+      double maxWeight = 0;
       for (int j = 0; j < numIds; ++j)
       {
         if (weights[j] > maxWeight)

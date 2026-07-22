@@ -22,18 +22,22 @@
 
 #include "vtkObject.h"
 
+#include "vtkDeprecation.h"           // for VTK_DEPRECATED_IN_9_7_0
 #include "vtkProperty.h"              // for VTK_SURFACE
 #include "vtkRenderingWebGPUModule.h" // for export macro
 #include "vtkSmartPointer.h"          // for vtkSmartPointer
+#include "vtkTimeStamp.h"             // for vtkTimeStamp
 
 #include "vtk_wgpu.h" // for wgpu::Buffer
 
+#include <array>   // for std::array
 #include <utility> // for std::pair
 
 VTK_ABI_NAMESPACE_BEGIN
 class vtkWebGPUConfiguration;
 class vtkPolyData;
 class vtkCellArray;
+class vtkDataArray;
 class vtkWebGPUComputePass;
 class vtkWebGPUComputePipeline;
 
@@ -75,6 +79,7 @@ public:
     NUM_TOPOLOGY_SOURCE_TYPES
   };
 
+  ///@{
   /**
    * Tessellates the cells in a mesh into graphics primitives.
    * This function calls DispatchCellToPrimitiveComputePipeline() for
@@ -85,12 +90,40 @@ public:
    * after dispatching the compute pipelines.
    * Returns false if no buffers have changed, else returns true.
    */
+  VTK_DEPRECATED_IN_9_7_0("Use DispatchMeshToPrimitiveComputePipeline() that accepts const "
+                          "std::array<T*, N> parameters instead.")
   bool DispatchMeshToPrimitiveComputePipeline(vtkWebGPUConfiguration* wgpuConfiguration,
     vtkPolyData* mesh, int representation, vtkTypeUInt32* vertexCounts[NUM_TOPOLOGY_SOURCE_TYPES],
     wgpu::Buffer* connectivityBuffers[NUM_TOPOLOGY_SOURCE_TYPES],
     wgpu::Buffer* cellIdBuffers[NUM_TOPOLOGY_SOURCE_TYPES],
     wgpu::Buffer* edgeArrayBuffers[NUM_TOPOLOGY_SOURCE_TYPES],
     wgpu::Buffer* cellIdOffsetUniformBuffers[NUM_TOPOLOGY_SOURCE_TYPES]);
+  bool DispatchMeshToPrimitiveComputePipeline(vtkWebGPUConfiguration* wgpuConfiguration,
+    vtkPolyData* mesh, int representation,
+    const std::array<vtkTypeUInt32*, NUM_TOPOLOGY_SOURCE_TYPES>& vertexCounts,
+    const std::array<wgpu::Buffer*, NUM_TOPOLOGY_SOURCE_TYPES>& connectivityBuffers,
+    const std::array<wgpu::Buffer*, NUM_TOPOLOGY_SOURCE_TYPES>& cellIdBuffers,
+    const std::array<wgpu::Buffer*, NUM_TOPOLOGY_SOURCE_TYPES>& edgeArrayBuffers,
+    const std::array<wgpu::Buffer*, NUM_TOPOLOGY_SOURCE_TYPES>& cellIdOffsetUniformBuffers);
+  ///@}
+
+  /**
+   * Tessellates the cells in a collection of meshes into graphics primitives.
+   * This function calls DispatchCellArraysToPrimitiveComputePipeline() for
+   * - vtkPolyData::GetVerts()
+   * - vtkPolyData::GetLines()
+   * - vtkPolyData::GetPolys()
+   * This method will initialize the vertexOffsetAndCounts, connectivityBuffers and
+   * edgeArrayBuffers after dispatching the compute pipelines. Returns false if no buffers have
+   * changed, else returns true.
+   */
+  bool DispatchMeshesToPrimitiveComputePipeline(vtkWebGPUConfiguration* wgpuConfiguration,
+    std::vector<vtkPolyData*> meshes, int representation,
+    std::vector<std::pair<vtkTypeUInt32, vtkTypeUInt32>>*
+      vertexOffsetAndCounts[NUM_TOPOLOGY_SOURCE_TYPES],
+    std::array<wgpu::Buffer*, NUM_TOPOLOGY_SOURCE_TYPES>& connectivityBuffers,
+    std::array<wgpu::Buffer*, NUM_TOPOLOGY_SOURCE_TYPES>& cellIdBuffers,
+    std::array<wgpu::Buffer*, NUM_TOPOLOGY_SOURCE_TYPES>& edgeArrayBuffers);
 
   /**
    * Tessellates each cell into primitives.
@@ -100,10 +133,42 @@ public:
    * after dispatching the compute pipelines.
    * Returns false if no buffers have changed, else returns true.
    */
+  VTK_DEPRECATED_IN_9_7_0("Use DispatchCellArrayToPrimitiveComputePipeline() instead.")
   bool DispatchCellToPrimitiveComputePipeline(vtkWebGPUConfiguration* wgpuConfiguration,
     vtkCellArray* cells, int representation, int cellType, vtkTypeUInt32 cellIdOffset,
     vtkTypeUInt32* vertexCount, wgpu::Buffer* connectivityBuffer, wgpu::Buffer* cellIdBuffer,
     wgpu::Buffer* edgeArrayBuffer, wgpu::Buffer* cellIdOffsetUniformBuffer);
+
+  /**
+   * Tessellates each cell into primitives.
+   * This function splits polygons, quads and triangle-strips into separate triangles.
+   * It splits polylines into line segments and polyvertices into individual vertices.
+   * This method will initialize the vertexCounts, connectivityBuffers and edgeArrayBuffers
+   * after dispatching the compute pipelines.
+   * Returns false if no buffers have changed, else returns true.
+   */
+  bool DispatchCellArrayToPrimitiveComputePipeline(vtkWebGPUConfiguration* wgpuConfiguration,
+    vtkCellArray* cells, int representation, int cellType, vtkTypeUInt32 cellIdOffset,
+    vtkTypeUInt32* vertexCount, wgpu::Buffer* connectivityBuffer, wgpu::Buffer* cellIdBuffer,
+    wgpu::Buffer* edgeArrayBuffer, wgpu::Buffer* cellIdOffsetUniformBuffer,
+    vtkDataArray* pointCoordinates = nullptr);
+
+  /**
+   * Tessellates the a collection of cell arrays into graphics primitives.
+   * This function calls DispatchCellToPrimitiveComputePipeline() for
+   * - vtkPolyData::GetVerts()
+   * - vtkPolyData::GetLines()
+   * - vtkPolyData::GetPolys()
+   * This method will initialize the vertexOffsetAndCounts, connectivityBuffers and edgeArrayBuffers
+   * after dispatching the compute pipelines.
+   * Returns false if no buffers have changed, else returns true.
+   */
+  bool DispatchCellArraysToPrimitiveComputePipeline(vtkWebGPUConfiguration* wgpuConfiguration,
+    const std::vector<vtkCellArray*>& cellArrays, int representation, int cellType,
+    const std::vector<vtkIdType>& numberOfPoints,
+    std::vector<std::pair<vtkTypeUInt32, vtkTypeUInt32>>* vertexOffsetAndCounts,
+    wgpu::Buffer* connectivityBuffer, wgpu::Buffer* cellIdBuffer, wgpu::Buffer* edgeArrayBuffer,
+    const std::vector<vtkDataArray*>& pointCoordinates = {});
 
   /**
    * Get whether the Cell-to-Primitive compute pipeline needs rebuilt.
@@ -159,15 +224,6 @@ protected:
   vtkWebGPUCellToPrimitiveConverter();
   ~vtkWebGPUCellToPrimitiveConverter() override;
 
-  // Timestamps help reuse previous resources as much as possible.
-  vtkTimeStamp TopologyBuildTimestamp[vtkWebGPUCellToPrimitiveConverter::NUM_TOPOLOGY_SOURCE_TYPES];
-  // compute pass speeds up cell to primitive conversions.
-  vtkSmartPointer<vtkWebGPUComputePass>
-    ComputePasses[vtkWebGPUCellToPrimitiveConverter::NUM_TOPOLOGY_SOURCE_TYPES];
-  // compute pipeline to execute the compute pass.
-  vtkSmartPointer<vtkWebGPUComputePipeline>
-    ComputePipelines[vtkWebGPUCellToPrimitiveConverter::NUM_TOPOLOGY_SOURCE_TYPES];
-
 private:
   vtkWebGPUCellToPrimitiveConverter(const vtkWebGPUCellToPrimitiveConverter&) = delete;
   void operator=(const vtkWebGPUCellToPrimitiveConverter&) = delete;
@@ -181,6 +237,15 @@ private:
   CreateCellToPrimitiveComputePassForCellType(
     vtkSmartPointer<vtkWebGPUConfiguration> wgpuConfiguration,
     TopologySourceType topologySourceType);
+
+  // Timestamps help reuse previous resources as much as possible.
+  vtkTimeStamp TopologyBuildTimestamp[vtkWebGPUCellToPrimitiveConverter::NUM_TOPOLOGY_SOURCE_TYPES];
+  // compute pass speeds up cell to primitive conversions.
+  vtkSmartPointer<vtkWebGPUComputePass>
+    ComputePasses[vtkWebGPUCellToPrimitiveConverter::NUM_TOPOLOGY_SOURCE_TYPES];
+  // compute pipeline to execute the compute pass.
+  vtkSmartPointer<vtkWebGPUComputePipeline>
+    ComputePipelines[vtkWebGPUCellToPrimitiveConverter::NUM_TOPOLOGY_SOURCE_TYPES];
 };
 
 VTK_ABI_NAMESPACE_END

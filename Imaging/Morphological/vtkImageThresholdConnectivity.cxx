@@ -10,6 +10,7 @@
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkMath.h"
+#include "vtkMathUtilities.h"
 #include "vtkObjectFactory.h"
 #include "vtkPoints.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
@@ -211,82 +212,6 @@ private:
 };
 
 //------------------------------------------------------------------------------
-// Make sure the thresholds are valid for the input scalar range
-template <class IT>
-void vtkImageThresholdConnectivityThresholds(
-  vtkImageThresholdConnectivity* self, vtkImageData* inData, IT& lowerThreshold, IT& upperThreshold)
-{
-  if (self->GetLowerThreshold() < inData->GetScalarTypeMin())
-  {
-    lowerThreshold = static_cast<IT>(inData->GetScalarTypeMin());
-  }
-  else
-  {
-    if (self->GetLowerThreshold() > inData->GetScalarTypeMax())
-    {
-      lowerThreshold = static_cast<IT>(inData->GetScalarTypeMax());
-    }
-    else
-    {
-      lowerThreshold = static_cast<IT>(self->GetLowerThreshold());
-    }
-  }
-  if (self->GetUpperThreshold() > inData->GetScalarTypeMax())
-  {
-    upperThreshold = static_cast<IT>(inData->GetScalarTypeMax());
-  }
-  else
-  {
-    if (self->GetUpperThreshold() < inData->GetScalarTypeMin())
-    {
-      upperThreshold = static_cast<IT>(inData->GetScalarTypeMin());
-    }
-    else
-    {
-      upperThreshold = static_cast<IT>(self->GetUpperThreshold());
-    }
-  }
-}
-
-//------------------------------------------------------------------------------
-// Make sure the replacement values are within the output scalar range
-template <class OT>
-void vtkImageThresholdConnectivityValues(
-  vtkImageThresholdConnectivity* self, vtkImageData* outData, OT& inValue, OT& outValue)
-{
-  if (self->GetInValue() < outData->GetScalarTypeMin())
-  {
-    inValue = static_cast<OT>(outData->GetScalarTypeMin());
-  }
-  else
-  {
-    if (self->GetInValue() > outData->GetScalarTypeMax())
-    {
-      inValue = static_cast<OT>(outData->GetScalarTypeMax());
-    }
-    else
-    {
-      inValue = static_cast<OT>(self->GetInValue());
-    }
-  }
-  if (self->GetOutValue() > outData->GetScalarTypeMax())
-  {
-    outValue = static_cast<OT>(outData->GetScalarTypeMax());
-  }
-  else
-  {
-    if (self->GetOutValue() < outData->GetScalarTypeMin())
-    {
-      outValue = static_cast<OT>(outData->GetScalarTypeMin());
-    }
-    else
-    {
-      outValue = static_cast<OT>(self->GetOutValue());
-    }
-  }
-}
-
-//------------------------------------------------------------------------------
 static void vtkImageThresholdConnectivityApplyStencil(
   vtkImageData* maskData, vtkImageStencilData* stencil, int extent[6])
 {
@@ -319,14 +244,14 @@ void vtkImageThresholdConnectivityExecute(vtkImageThresholdConnectivity* self, v
   activeComponent = activeComponent % nComponents;
 
   // Get thresholds as input data type
-  IT lowerThreshold, upperThreshold;
-  vtkImageThresholdConnectivityThresholds(self, inData, lowerThreshold, upperThreshold);
+  IT lowerThreshold = vtkMathUtilities::SafeCastFromDouble<IT>(self->GetLowerThreshold());
+  IT upperThreshold = vtkMathUtilities::SafeCastFromDouble<IT>(self->GetUpperThreshold());
 
   // Get replace values as output data type
   bool replaceIn = (self->GetReplaceIn() != 0);
   bool replaceOut = (self->GetReplaceOut() != 0);
-  OT inValue, outValue;
-  vtkImageThresholdConnectivityValues(self, outData, inValue, outValue);
+  OT inValue = vtkMathUtilities::SafeCastFromDouble<OT>(self->GetInValue());
+  OT outValue = vtkMathUtilities::SafeCastFromDouble<OT>(self->GetOutValue());
 
   // Set the "outside" with either the input or the OutValue
   vtkImageIterator<IT> inIt(inData, outExt);

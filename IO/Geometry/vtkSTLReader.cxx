@@ -122,12 +122,12 @@ int vtkSTLReader::RequestData(vtkInformation* vtkNotUsed(request),
   if (solid == "solid")
   {
     // First word is "solid", which means the data should be ASCII.
-    newPts->Allocate(5000);
+    newPts->Reserve(5000);
     newPolys->AllocateEstimate(10000, 1);
     if (this->ScalarTags)
     {
       newScalars = vtkSmartPointer<vtkFloatArray>::New();
-      newScalars->Allocate(5000);
+      newScalars->ReserveValues(5000);
     }
 
     vtkNew<vtkResourceParser> parser;
@@ -166,13 +166,13 @@ int vtkSTLReader::RequestData(vtkInformation* vtkNotUsed(request),
   if (this->Merging)
   {
     mergedPts = vtkSmartPointer<vtkPoints>::New();
-    mergedPts->Allocate(newPts->GetNumberOfPoints() / 2);
+    mergedPts->Reserve(newPts->GetNumberOfPoints() / 2);
     mergedPolys = vtkSmartPointer<vtkCellArray>::New();
     mergedPolys->AllocateCopy(newPolys);
     if (newScalars)
     {
       mergedScalars = vtkSmartPointer<vtkFloatArray>::New();
-      mergedScalars->Allocate(newPolys->GetNumberOfCells());
+      mergedScalars->ReserveValues(newPolys->GetNumberOfCells());
     }
 
     vtkSmartPointer<vtkIncrementalPointLocator> locator = this->Locator;
@@ -294,7 +294,8 @@ bool vtkSTLReader::ReadBinarySTL(
   this->SetHeader(reinterpret_cast<char*>(this->BinaryHeader->GetPointer(0)));
 
   // Remove the extra NULL termination from the binary header.
-  this->BinaryHeader->Resize(::STL_HEADER_SIZE);
+  this->BinaryHeader->SetNumberOfTuples(::STL_HEADER_SIZE);
+  this->BinaryHeader->Squeeze();
 
   uint32_t numTrisField;
   if (!vtkSTLReader::ReadBinaryTrisField(stream, numTrisField))
@@ -320,7 +321,7 @@ bool vtkSTLReader::ReadBinarySTL(
 
   // now allocate the memory we need for the triangles.
   // note we ignore the triangle count field and read until end of file.
-  newPts->Allocate(numTrisFile * 3);
+  newPts->Reserve(numTrisFile * 3);
   newPolys->AllocateEstimate(numTrisFile, 3);
 
   facet_t facet;
@@ -329,11 +330,15 @@ bool vtkSTLReader::ReadBinarySTL(
     vtkByteSwap::Swap4LE(facet.n);
     vtkByteSwap::Swap4LE(facet.n + 1);
     vtkByteSwap::Swap4LE(facet.n + 2);
-    if (!std::isfinite(facet.n[0]) || !std::isfinite(facet.n[1]) || !std::isfinite(facet.n[2]))
+    if (!this->GetRelaxedConformance()) // If not relaxed, enforce normal vector to be finite.
     {
-      vtkErrorMacro("Normal vector non-finite.");
-      return false;
+      if (!std::isfinite(facet.n[0]) || !std::isfinite(facet.n[1]) || !std::isfinite(facet.n[2]))
+      {
+        vtkErrorMacro("Normal vector non-finite.");
+        return false;
+      }
     }
+    // else we could compute the normal vector from the vertices, but it is not even used here.
 
     vtkByteSwap::Swap4LE(facet.v1);
     vtkByteSwap::Swap4LE(facet.v1 + 1);

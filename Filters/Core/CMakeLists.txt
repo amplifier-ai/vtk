@@ -21,6 +21,7 @@ set(classes
   vtkCleanPolyData
   vtkClipPolyData
   vtkCompositeCutter
+  vtkConvexHull
   vtkCompositeDataProbeFilter
   vtkConnectivityFilter
   vtkConstrainedSmoothingFilter
@@ -63,6 +64,7 @@ set(classes
   vtkGlyph3D
   vtkGridSynchronizedTemplates3D
   vtkHedgeHog
+  vtkHilbertCurveSorter
   vtkHull
   vtkHyperTreeGridProbeFilter
   vtkHyperTreeGridProbeFilterUtilities
@@ -117,6 +119,7 @@ set(classes
   vtkStructuredGridOutlineFilter
   vtkSurfaceNets2D
   vtkSurfaceNets3D
+  vtkSurfaceNetsAtlas
   vtkSynchronizedTemplates2D
   vtkSynchronizedTemplates3D
   vtkSynchronizedTemplatesCutter3D
@@ -139,13 +142,13 @@ set(classes
 set(headers
   vtkDecimatePolylineStrategy.h)
 
-set(private_headers
-  vtk3DLinearGridInternal.h)
+set(private_classes
+  vtkSurfaceNets3DNonManifoldCases)
 
 vtk_module_add_module(VTK::FiltersCore
   CLASSES ${classes}
   HEADERS ${headers}
-  PRIVATE_HEADERS ${private_headers})
+  PRIVATE_CLASSES ${private_classes})
 
 vtk_add_test_mangling(VTK::FiltersCore)
 

@@ -42,8 +42,18 @@ public:
       vtkTypeUInt32 Flags = 0;
       // Additional custom flags used to encode various integer/boolean properties.
       vtkTypeUInt32 Flags2 = 0;
+      // Coincident topology polygon offset factor (for surface/triangle pipelines).
+      vtkTypeFloat32 CoinPolygonFactor = 0;
+      // Coincident topology polygon offset units (for surface/triangle pipelines).
+      vtkTypeFloat32 CoinPolygonOffset = 0;
+      // Coincident topology line offset factor (for wireframe/line pipelines).
+      vtkTypeFloat32 CoinLineFactor = 0;
+      // Coincident topology line offset units (for wireframe/line pipelines).
+      vtkTypeFloat32 CoinLineOffset = 0;
+      // Coincident topology point offset units (for point pipelines).
+      vtkTypeFloat32 CoinPointOffset = 0;
     } RenderOpts;
-    vtkTypeUInt32 Pad[3];
+    vtkTypeUInt32 Pad[2];
 
     struct ColorOptions
     {

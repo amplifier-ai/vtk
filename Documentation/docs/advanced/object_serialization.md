@@ -99,6 +99,13 @@ The `vtkWrapSerDes` executable makes use of the `WrappingTools` package to autom
       }
       ```
 
+## JSON type manifests
+
+When configured with `VTK_BUILD_TYPES_JSON=ON`, `vtkWrapSerDes` additionally
+emits a per-class JSON type manifest describing the marshalled properties and
+methods. These feed downstream TypeScript-definition generation for the
+WebAssembly object proxy. See {doc}`json_type_manifests`.
+
 ## Manual marshal code
 
 On the other hand, the `VTK_MARSHALMANUAL` macro is used to indicate that a class
@@ -139,7 +146,7 @@ your custom `RegisterHandlers_vtkClassNameSerDesHelper`.
      - `Common/DataModel/vtkCellArraySerDesHelper.cxx` for `Common/DataModel/vtkCellArray.h`
 
 ## Convenient script to annotate headers and module
-- The [Utilities/Marshalling/marshal_macro_annotate_headers.py](../../../Utilities/Marshalling/marshal_macro_annotate_headers.py) script annotates headers for automatic or manual serialization. It is fed and driven by the accompanying [Utilities/Marshalling/VTK_MARSHALAUTO.txt](../../../Utilities/Marshalling/VTK_MARSHALAUTO.txt), [Utilities/Marshalling/VTK_MARSHALMANUAL.txt](../../../Utilities/Marshalling/VTK_MARSHALMANUAL.txt) and [Utilities/Marshalling/ignore.txt](../../../Utilities/Marshalling/ignore.txt).
+- The [Utilities/Marshalling/marshal_macro_annotate_headers.py](https://gitlab.kitware.com/vtk/vtk/-/blob/master//Utilities/Marshalling/marshal_macro_annotate_headers.py) script annotates headers for automatic or manual serialization. It is fed and driven by the accompanying [Utilities/Marshalling/VTK_MARSHALAUTO.txt](https://gitlab.kitware.com/vtk/vtk/-/blob/master//Utilities/Marshalling/VTK_MARSHALAUTO.txt), [Utilities/Marshalling/VTK_MARSHALMANUAL.txt](https://gitlab.kitware.com/vtk/vtk/-/blob/master//Utilities/Marshalling/VTK_MARSHALMANUAL.txt) and [Utilities/Marshalling/ignore.txt](https://gitlab.kitware.com/vtk/vtk/-/blob/master//Utilities/Marshalling/ignore.txt).
 
 - When the `-u, --update` argument is used, headers are in-place edited to use the `VTK_MARSHAL(AUTO|MANUAL)` wrapping hint. Files that already have this hint are untouched.
 

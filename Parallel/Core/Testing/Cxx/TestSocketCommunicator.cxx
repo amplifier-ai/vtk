@@ -13,7 +13,11 @@
 
 #include <iostream>
 
-#define MESSAGE(x) std::cout << (is_server ? "SERVER" : "CLIENT") << ":" x << std::endl;
+#define MESSAGE(x)                                                                                 \
+  do                                                                                               \
+  {                                                                                                \
+    std::cout << (is_server ? "SERVER" : "CLIENT") << ":" x << std::endl;                          \
+  } while (0)
 
 //-----------------------------------------------------------------------------
 // This unit test make sure that we can Send/Receive a int, vtkDataArray and a vtkDataSet
@@ -24,7 +28,7 @@ bool TestSendReceiveDataArray(vtkSocketController* controller, bool& is_server)
   vtkNew<vtkDoubleArray> dArray;
   vtkNew<vtkPolyData> pData;
 
-  MESSAGE("---- TestSendReceiveDataArray ----")
+  MESSAGE("---- TestSendReceiveDataArray ----");
 
   for (int cc = 0; cc < 2; cc++)
   {
@@ -70,18 +74,18 @@ bool TestSendReceiveDataArray(vtkSocketController* controller, bool& is_server)
 // server hangs indefinitely.
 bool TestConnectionAbortHandling(vtkSocketController* controller, bool& is_server)
 {
-  MESSAGE("---- TestConnectionAbortHandling ----")
-  MESSAGE("Check support of connection failure...")
+  MESSAGE("---- TestConnectionAbortHandling ----");
+  MESSAGE("Check support of connection failure...");
   vtkNew<vtkDoubleArray> dArray;
 
   if (is_server)
   {
     controller->Receive(dArray, 1, 101013);
-    MESSAGE("Error is expected, continue.")
+    MESSAGE("Error is expected, continue.");
   }
   else
   {
-    MESSAGE("Kill the client")
+    MESSAGE("Kill the client");
     controller->TriggerBreakRMIs();
   }
 

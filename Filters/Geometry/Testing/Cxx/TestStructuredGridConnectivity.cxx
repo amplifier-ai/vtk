@@ -184,7 +184,7 @@ void ApplyXYZFieldToGrid(vtkUniformGrid* grd, const std::string& prefix)
         nodeXYZArray->SetComponent(meshPntIdx, 1, xyz[1]);
         nodeXYZArray->SetComponent(meshPntIdx, 2, xyz[2]);
       } // END if
-    }   // END for all nodes
+    } // END for all nodes
 
     centroid[0] = xsum / c->GetNumberOfPoints();
     centroid[1] = ysum / c->GetNumberOfPoints();
@@ -317,7 +317,7 @@ int GetTotalNumberOfNodes(vtkMultiBlockDataSet* multiblock)
           ++numNodes;
         }
       } // END for all nodes
-    }   // END if grid != nullptr
+    } // END if grid != nullptr
 
   } // END for all blocks
 
@@ -349,8 +349,8 @@ int GetTotalNumberOfCells(vtkMultiBlockDataSet* multiblock)
           ++numCells;
         }
       } // END for all cells
-    }   // END if grid != nullptr
-  }     // END for all blocks
+    } // END if grid != nullptr
+  } // END for all blocks
   return (numCells);
 }
 
@@ -398,7 +398,7 @@ void WriteMultiBlock(vtkMultiBlockDataSet* mbds, const std::string& prefix)
 }
 
 //------------------------------------------------------------------------------
-vtkUniformGrid* GetGhostedGridFromGrid(vtkUniformGrid* grid, int gext[6])
+vtkUniformGrid* GetGhostedGridFromGrid(vtkUniformGrid* grid, VTK_FUTURE_CONST int gext[6])
 {
   assert("pre: input grid is nullptr" && (grid != nullptr));
   vtkUniformGrid* newGrid = vtkUniformGrid::New();
@@ -588,7 +588,7 @@ int TestStructuredGridConnectivity_internal(int argc, char* argv[])
         return rc;
       }
     } // END for all ghost layer tests
-  }   // END for all numPartition tests
+  } // END for all numPartition tests
 
   return (rc);
 }
@@ -630,7 +630,7 @@ bool CheckArrays(vtkDoubleArray* computed, vtkDoubleArray* expected)
         status = false;
       }
     } // END for all components
-  }   // END for all tuples
+  } // END for all tuples
 
   return (status);
 }
@@ -697,11 +697,11 @@ int SimpleTest(int argc, char** argv)
   // Doing a void cast here to resolve warnings on unused vars
   static_cast<void>(argc);
   int dim, np, ng, nng;
-  VTK_FROM_CHARS_IF_ERROR_RETURN(argv[1], dim, EXIT_FAILURE) // The dimension of the data
-  VTK_FROM_CHARS_IF_ERROR_RETURN(argv[2], np, EXIT_FAILURE)  // The number of partitions to create
-  VTK_FROM_CHARS_IF_ERROR_RETURN(argv[3], ng, EXIT_FAILURE)  // The number of initial ghost layers
+  VTK_FROM_CHARS_IF_ERROR_RETURN(argv[1], dim, EXIT_FAILURE); // The dimension of the data
+  VTK_FROM_CHARS_IF_ERROR_RETURN(argv[2], np, EXIT_FAILURE);  // The number of partitions to create
+  VTK_FROM_CHARS_IF_ERROR_RETURN(argv[3], ng, EXIT_FAILURE);  // The number of initial ghost layers
   VTK_FROM_CHARS_IF_ERROR_RETURN(
-    argv[4], nng, EXIT_FAILURE) // The number of additional ghost layers
+    argv[4], nng, EXIT_FAILURE); // The number of additional ghost layers
 
   assert("pre: dim must be 2 or 3" && ((dim == 2) || (dim == 3)));
 

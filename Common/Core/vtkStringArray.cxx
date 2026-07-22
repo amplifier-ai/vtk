@@ -84,29 +84,17 @@ vtkStringArray::~vtkStringArray()
 }
 
 //------------------------------------------------------------------------------
-bool vtkStringArray::AllocateTuples(vtkIdType numTuples)
-{
-  vtkIdType numValues = numTuples * this->GetNumberOfComponents();
-  if (this->Buffer->Allocate(numValues))
-  {
-    this->Size = this->Buffer->GetSize();
-    return true;
-  }
-  return false;
-}
-
-//------------------------------------------------------------------------------
 bool vtkStringArray::ReallocateTuples(vtkIdType numTuples)
 {
   vtkIdType newSize = numTuples * this->GetNumberOfComponents();
-  if (newSize == this->Size)
+  if (newSize == this->Capacity)
   {
     return true;
   }
 
   if (this->Buffer->Reallocate(newSize))
   {
-    this->Size = this->Buffer->GetSize();
+    this->Capacity = this->Buffer->GetSize();
     // Notify observers that the buffer may have changed
     this->InvokeEvent(vtkCommand::BufferChangedEvent);
     return true;
@@ -125,9 +113,9 @@ bool vtkStringArray::EnsureAccessToTuple(vtkIdType tupleIdx)
   vtkIdType expectedMaxId = minSize - 1;
   if (this->MaxId < expectedMaxId)
   {
-    if (this->Size < minSize)
+    if (this->Capacity < minSize)
     {
-      if (!this->Resize(tupleIdx + 1))
+      if (!this->ReserveTuples(tupleIdx + 1))
       {
         return false;
       }
@@ -189,8 +177,8 @@ void vtkStringArray::SetArray(ValueType* array, vtkIdType size, int save, int de
     this->Buffer->SetFreeFunction(save != 0, free);
   }
 
-  this->Size = size;
-  this->MaxId = this->Size - 1;
+  this->Capacity = size;
+  this->MaxId = this->Capacity - 1;
   this->DataChanged();
 }
 
@@ -198,51 +186,6 @@ void vtkStringArray::SetArray(ValueType* array, vtkIdType size, int save, int de
 void vtkStringArray::SetArrayFreeFunction(void (*callback)(void*))
 {
   this->Buffer->SetFreeFunction(false, callback);
-}
-
-//------------------------------------------------------------------------------
-// Allocate memory for this array. Delete old storage only if necessary.
-
-vtkTypeBool vtkStringArray::Allocate(vtkIdType size, vtkIdType vtkNotUsed(ext))
-{
-  // Allocator must update this->MaxId properly.
-  this->MaxId = -1;
-  if (size > this->Size || size == 0)
-  {
-    this->Size = 0;
-
-    // let's keep the size an integral multiple of the number of components.
-    size = size < 0 ? 0 : size;
-    int numComps = this->GetNumberOfComponents() > 0 ? this->GetNumberOfComponents() : 1;
-    double ceilNum = ceil(static_cast<double>(size) / static_cast<double>(numComps));
-    vtkIdType numTuples = static_cast<vtkIdType>(ceilNum);
-    // NOTE: if numTuples is 0, AllocateTuples is expected to release the
-    // memory.
-    if (this->AllocateTuples(numTuples) == false)
-    {
-      vtkErrorMacro(
-        "Unable to allocate " << size << " elements of size " << sizeof(ValueType) << " bytes. ");
-#if !defined VTK_DONT_THROW_BAD_ALLOC
-      // We can throw something that has universal meaning
-      throw std::bad_alloc();
-#else
-      // We indicate that alloc failed by return
-      return 0;
-#endif
-    }
-    this->Size = numTuples * numComps;
-  }
-  this->DataChanged();
-  return 1;
-}
-
-//------------------------------------------------------------------------------
-// Release storage and reset array to initial state.
-
-void vtkStringArray::Initialize()
-{
-  this->Resize(0);
-  this->DataChanged();
 }
 
 //------------------------------------------------------------------------------
@@ -307,7 +250,7 @@ void vtkStringArray::ShallowCopy(vtkAbstractArray* src)
   vtkStringArray* o = vtkStringArray::FastDownCast(src);
   if (o)
   {
-    this->Size = o->Size;
+    this->Capacity = o->Capacity;
     this->MaxId = o->MaxId;
     this->SetName(o->Name);
     this->SetNumberOfComponents(o->NumberOfComponents);
@@ -402,10 +345,37 @@ void vtkStringArray::PrintSelf(ostream& os, vtkIndent indent)
 }
 
 //------------------------------------------------------------------------------
-vtkTypeBool vtkStringArray::Resize(vtkIdType numTuples)
+void vtkStringArray::Squeeze()
 {
+  if (this->GetCapacity() > this->GetNumberOfValues())
+  {
+    vtkIdType numTuples = this->GetNumberOfTuples();
+    int numComps = this->GetNumberOfComponents() > 0 ? this->GetNumberOfComponents() : 1;
+    if (!this->ReallocateTuples(this->GetNumberOfTuples()))
+    {
+      vtkErrorMacro("Unable to allocate " << numTuples * numComps << " elements of size "
+                                          << sizeof(ValueType) << " bytes. ");
+#if !defined NDEBUG
+      // We're debugging, crash here preserving the stack
+      abort();
+#elif !defined VTK_DONT_THROW_BAD_ALLOC
+      // We can throw something that has universal meaning
+      throw std::bad_alloc();
+#else
+      // We indicate that malloc failed by return
+      return;
+#endif
+    }
+    this->Capacity = this->GetNumberOfValues();
+  }
+}
+
+//------------------------------------------------------------------------------
+vtkTypeBool vtkStringArray::ReserveTuples(vtkIdType numTuples)
+{
+  assert(numTuples >= 0);
   int numComps = this->GetNumberOfComponents();
-  vtkIdType curNumTuples = this->Size / (numComps > 0 ? numComps : 1);
+  vtkIdType curNumTuples = this->Capacity / (numComps > 0 ? numComps : 1);
   if (numTuples > curNumTuples)
   {
     // Requested size is bigger than current size.  Allocate enough
@@ -413,18 +383,10 @@ vtkTypeBool vtkStringArray::Resize(vtkIdType numTuples)
     // currently allocated memory.
     numTuples = curNumTuples + numTuples;
   }
-  else if (numTuples == curNumTuples)
+  else
   {
     return 1;
   }
-  else
-  {
-    // Requested size is smaller than current size.  Squeeze the
-    // memory.
-    this->DataChanged();
-  }
-
-  assert(numTuples >= 0);
 
   if (!this->ReallocateTuples(numTuples))
   {
@@ -443,10 +405,7 @@ vtkTypeBool vtkStringArray::Resize(vtkIdType numTuples)
   }
 
   // Allocation was successful. Save it.
-  this->Size = numTuples * numComps;
-
-  // Update MaxId if we truncated:
-  this->MaxId = std::min(this->Size - 1, this->MaxId);
+  this->Capacity = numTuples * numComps;
 
   return 1;
 }
@@ -455,9 +414,9 @@ vtkTypeBool vtkStringArray::Resize(vtkIdType numTuples)
 vtkStringArray::ValueType* vtkStringArray::WritePointer(vtkIdType valueIdx, vtkIdType numValues)
 {
   vtkIdType newSize = valueIdx + numValues;
-  if (newSize > this->Size)
+  if (newSize > this->Capacity)
   {
-    if (!this->Resize(newSize / this->NumberOfComponents + 1))
+    if (!this->ReserveTuples(newSize / this->NumberOfComponents + 1))
     {
       return nullptr;
     }
@@ -465,7 +424,12 @@ vtkStringArray::ValueType* vtkStringArray::WritePointer(vtkIdType valueIdx, vtkI
   }
 
   // For extending the in-use ids but not the size:
-  this->MaxId = std::max(this->MaxId, newSize - 1);
+  // Update the MaxId only if actually larger.
+  // NB: for thread safety, don't use std::max here because it would write unconditionally.
+  if (newSize - 1 > this->MaxId) // NOLINT(readability-use-std-min-max)
+  {
+    this->MaxId = newSize - 1;
+  }
 
   this->DataChanged();
   return this->GetPointer(valueIdx);
@@ -490,7 +454,7 @@ void vtkStringArray::InsertValue(vtkIdType valueIdx, ValueType value)
 vtkIdType vtkStringArray::InsertNextValue(ValueType value)
 {
   vtkIdType nextValueIdx = this->MaxId + 1;
-  if (nextValueIdx >= this->Size)
+  if (nextValueIdx >= this->Capacity)
   {
     vtkIdType tuple = nextValueIdx / this->NumberOfComponents;
     this->EnsureAccessToTuple(tuple);
@@ -501,7 +465,12 @@ vtkIdType vtkStringArray::InsertNextValue(ValueType value)
   }
 
   // Extending array without needing to reallocate:
-  this->MaxId = std::max(this->MaxId, nextValueIdx);
+  // Update the MaxId only if actually larger.
+  // NB: for thread safety, don't use std::max here because it would write unconditionally.
+  if (nextValueIdx > this->MaxId) // NOLINT(readability-use-std-min-max)
+  {
+    this->MaxId = nextValueIdx;
+  }
 
   this->SetValue(nextValueIdx, value);
   return nextValueIdx;
@@ -517,7 +486,7 @@ int vtkStringArray::GetDataTypeSize() const
 unsigned long vtkStringArray::GetActualMemorySize() const
 {
   size_t totalSize = 0;
-  size_t numPrims = static_cast<size_t>(this->GetSize());
+  size_t numPrims = static_cast<size_t>(this->GetCapacity());
 
   for (size_t i = 0; i < numPrims; ++i)
   {
@@ -634,18 +603,21 @@ void vtkStringArray::InsertTuples(vtkIdList* dstIds, vtkIdList* srcIds, vtkAbstr
   }
 
   vtkIdType newSize = (maxDstTupleId + 1) * this->NumberOfComponents;
-  if (this->Size < newSize)
+  if (this->Capacity < newSize)
   {
-    if (!this->Resize(maxDstTupleId + 1))
+    if (!this->ReserveTuples(maxDstTupleId + 1))
     {
-      vtkErrorMacro("Resize failed.");
+      vtkErrorMacro("Reallocate failed.");
       return;
     }
   }
 
-  // parenthesis around std::max prevent MSVC macro replacement when
-  // inlined:
-  this->MaxId = (std::max)(this->MaxId, newSize - 1);
+  // Update the MaxId only if actually larger.
+  // NB: for thread safety, don't use std::max here because it would write unconditionally.
+  if (newSize - 1 > this->MaxId) // NOLINT(readability-use-std-min-max)
+  {
+    this->MaxId = newSize - 1;
+  }
 
   vtkIdType numTuples = srcIds->GetNumberOfIds();
   for (vtkIdType t = 0; t < numTuples; ++t)
@@ -704,18 +676,21 @@ void vtkStringArray::InsertTuplesStartingAt(
   }
 
   vtkIdType newSize = (maxDstTupleId + 1) * this->NumberOfComponents;
-  if (this->Size < newSize)
+  if (this->Capacity < newSize)
   {
-    if (!this->Resize(maxDstTupleId + 1))
+    if (!this->ReserveTuples(maxDstTupleId + 1))
     {
-      vtkErrorMacro("Resize failed.");
+      vtkErrorMacro("Reallocate failed.");
       return;
     }
   }
 
-  // parenthesis around std::max prevent MSVC macro replacement when
-  // inlined:
-  this->MaxId = (std::max)(this->MaxId, newSize - 1);
+  // Update the MaxId only if actually larger.
+  // NB: for thread safety, don't use std::max here because it would write unconditionally.
+  if (newSize - 1 > this->MaxId) // NOLINT(readability-use-std-min-max)
+  {
+    this->MaxId = newSize - 1;
+  }
 
   vtkIdType numTuples = srcIds->GetNumberOfIds();
   for (vtkIdType t = 0; t < numTuples; ++t)
@@ -769,16 +744,21 @@ void vtkStringArray::InsertTuples(
   }
 
   vtkIdType newSize = (maxDstTupleId + 1) * this->NumberOfComponents;
-  if (this->Size < newSize)
+  if (this->Capacity < newSize)
   {
-    if (!this->Resize(maxDstTupleId + 1))
+    if (!this->ReserveTuples(maxDstTupleId + 1))
     {
-      vtkErrorMacro("Resize failed.");
+      vtkErrorMacro("Reallocate failed.");
       return;
     }
   }
 
-  this->MaxId = std::max(this->MaxId, newSize - 1);
+  // Update the MaxId only if actually larger.
+  // NB: for thread safety, don't use std::max here because it would write unconditionally.
+  if (newSize - 1 > this->MaxId) // NOLINT(readability-use-std-min-max)
+  {
+    this->MaxId = newSize - 1;
+  }
 
   ValueType* srcBegin = other->GetPointer(srcStart * numComps);
   ValueType* srcEnd = srcBegin + (n * numComps);

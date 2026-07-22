@@ -7,6 +7,7 @@
 #include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
+#include "vtkMathUtilities.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
@@ -122,29 +123,11 @@ int vtkImageMathematics::RequestInformation(vtkInformation* vtkNotUsed(request),
 namespace
 {
 //------------------------------------------------------------------------------
-template <class TValue, class TIvar>
-void vtkImageMathematicsClamp(TValue& value, TIvar ivar, vtkImageData* data)
-{
-  if (ivar < static_cast<TIvar>(data->GetScalarTypeMin()))
-  {
-    value = static_cast<TValue>(data->GetScalarTypeMin());
-  }
-  else if (ivar > static_cast<TIvar>(data->GetScalarTypeMax()))
-  {
-    value = static_cast<TValue>(data->GetScalarTypeMax());
-  }
-  else
-  {
-    value = static_cast<TValue>(ivar);
-  }
-}
-
-//------------------------------------------------------------------------------
 // This templated function executes the filter for any type of data.
 // Handles the one input operations
 template <class T>
 void vtkImageMathematicsExecute1(vtkImageMathematics* self, vtkImageData* in1Data, T* in1Ptr,
-  vtkImageData* outData, T* outPtr, int outExt[6], int id)
+  vtkImageData* outData, T* outPtr, VTK_FUTURE_CONST int outExt[6], int id)
 {
   int idxR, idxY, idxZ;
   int maxY, maxZ;
@@ -176,9 +159,8 @@ void vtkImageMathematicsExecute1(vtkImageMathematics* self, vtkImageData* in1Dat
 
   // Avoid casts by making constants the same type as input/output
   // Of course they must be clamped to a valid range for the scalar type
-  T constantk, constantc;
-  vtkImageMathematicsClamp(constantk, self->GetConstantK(), in1Data);
-  vtkImageMathematicsClamp(constantc, self->GetConstantC(), in1Data);
+  T constantk = vtkMathUtilities::SafeCastFromDouble<T>(self->GetConstantK());
+  T constantc = vtkMathUtilities::SafeCastFromDouble<T>(self->GetConstantC());
 
   // Loop through output pixels
   for (idxZ = 0; idxZ <= maxZ; idxZ++)
@@ -272,7 +254,7 @@ void vtkImageMathematicsExecute1(vtkImageMathematics* self, vtkImageData* in1Dat
 // Handles the two input operations
 template <class T>
 void vtkImageMathematicsExecute2(vtkImageMathematics* self, vtkImageData* inData, T* inPtr,
-  vtkImageData* outData, T* outPtr, int outExt[6], int id)
+  vtkImageData* outData, T* outPtr, VTK_FUTURE_CONST int outExt[6], int id)
 {
   int idxR, idxY, idxZ;
   int maxY, maxZ;
@@ -386,8 +368,8 @@ void vtkImageMathematicsExecute2(vtkImageMathematics* self, vtkImageData* inData
 
 //------------------------------------------------------------------------------
 template <class T>
-void vtkImageMathematicsInitOutput(
-  vtkImageData* inData, T* inPtr, vtkImageData* vtkNotUsed(outData), T* outPtr, int ext[6])
+void vtkImageMathematicsInitOutput(vtkImageData* inData, T* inPtr,
+  vtkImageData* vtkNotUsed(outData), T* outPtr, VTK_FUTURE_CONST int ext[6])
 {
   int idxY, idxZ;
   int maxY, maxZ;
@@ -440,7 +422,7 @@ void vtkImageMathematicsInitOutput(
 // the datas data types.
 void vtkImageMathematics::ThreadedRequestData(vtkInformation* vtkNotUsed(request),
   vtkInformationVector** vtkNotUsed(inputVector), vtkInformationVector* vtkNotUsed(outputVector),
-  vtkImageData*** inData, vtkImageData** outData, int outExt[6], int id)
+  vtkImageData*** inData, vtkImageData** outData, VTK_FUTURE_CONST int outExt[6], int id)
 {
   void* outPtr = outData[0]->GetScalarPointerForExtent(outExt);
 

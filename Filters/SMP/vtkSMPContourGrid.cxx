@@ -194,14 +194,14 @@ public:
     estimatedSize = estimatedSize / 1024 * 1024; // multiple of 1024
     estimatedSize = std::max<vtkIdType>(estimatedSize, 1024);
 
-    newPts->Allocate(estimatedSize, estimatedSize);
+    newPts->Reserve(estimatedSize);
 
-    vertCellOffsets->Allocate(estimatedSize);
-    vertConnOffsets->Allocate(estimatedSize);
-    lineCellOffsets->Allocate(estimatedSize);
-    lineConnOffsets->Allocate(estimatedSize);
-    polyCellOffsets->Allocate(estimatedSize);
-    polyConnOffsets->Allocate(estimatedSize);
+    vertCellOffsets->Reserve(estimatedSize);
+    vertConnOffsets->Reserve(estimatedSize);
+    lineCellOffsets->Reserve(estimatedSize);
+    lineConnOffsets->Reserve(estimatedSize);
+    polyCellOffsets->Reserve(estimatedSize);
+    polyConnOffsets->Reserve(estimatedSize);
 
     // locator->SetPoints(newPts);
     locator->InitPointInsertion(newPts, this->Input->GetBounds(), this->Input->GetNumberOfPoints());
@@ -221,7 +221,7 @@ public:
     vtkDataArray*& cellScalars = this->CellScalars.Local();
     cellScalars = this->InScalars->NewInstance();
     cellScalars->SetNumberOfComponents(this->InScalars->GetNumberOfComponents());
-    cellScalars->Allocate(VTK_CELL_SIZE * this->InScalars->GetNumberOfComponents());
+    cellScalars->ReserveTuples(VTK_CELL_SIZE);
 
     vtkPointData* outPd = output->GetPointData();
     vtkCellData* outCd = output->GetCellData();
@@ -311,7 +311,7 @@ public:
           {
             range[1] = *it;
           } // if scalar >= max range value
-        }   // for all cellScalars
+        } // for all cellScalars
 
         bool needCell = false;
         for (int i = 0; i < numValues; i++)
@@ -320,7 +320,7 @@ public:
           {
             needCell = true;
           } // if contour value in range for this cell
-        }   // end for numContours
+        } // end for numContours
 
         if (needCell)
         {
@@ -372,8 +372,8 @@ public:
             }
           }
         } // if cell need be contoured
-      }   // for all cells
-    }     // if no scalar tree requested
+      } // for all cells
+    } // if no scalar tree requested
     else
     { // scalar tree provided
       // The begin / end parameters to this function represent batches of candidate
@@ -441,8 +441,8 @@ public:
             polyConnOffsets->InsertNextId(begPolyConnSize);
           }
         } // for all cells in this batch
-      }   // for this batch of cells
-    }     // using scalar tree
+      } // for this batch of cells
+    } // using scalar tree
 
   } // operator()
 

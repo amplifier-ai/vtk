@@ -12,7 +12,6 @@
 #ifndef vtkHDRReader_h
 #define vtkHDRReader_h
 
-#include "vtkDeprecation.h"   // For VTK_DEPRECATED_IN_9_6_0
 #include "vtkIOImageModule.h" // For export macro
 #include "vtkImageReader.h"
 #include <string> // for std::string
@@ -111,13 +110,6 @@ protected:
   bool HDRReaderUpdateSlice(float* outPtr, int* outExt);
   void HDRReaderUpdate(vtkImageData* data, float* outPtr);
 
-  /**
-   * If the stream has an error, close the file and return true.
-   * Else return false.
-   */
-  VTK_DEPRECATED_IN_9_6_0("Do not use, use Streams instead")
-  bool HasError(istream* is);
-
   int GetWidth() const;
   int GetHeight() const;
 
@@ -159,6 +151,9 @@ private:
    * Return false if a reading error occurred, else true.
    */
   bool ReadLineRLE(vtkResourceStream* stream, unsigned char* lineBufferPtr);
+
+  // Internal ExecuteInformation() validation flag
+  bool Validated = false;
 };
 VTK_ABI_NAMESPACE_END
 #endif

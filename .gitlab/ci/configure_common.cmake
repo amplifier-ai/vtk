@@ -13,6 +13,7 @@ set(VTK_LINKER_FATAL_WARNINGS ON CACHE BOOL "")
 
 set(VTK_ENABLE_CATALYST ON CACHE BOOL "")
 set(VTK_WRAP_SERIALIZATION ON CACHE BOOL "")
+set(VTK_JPEG_ENABLE_SIMD ON CACHE BOOL "")
 
 # The install trees on CI machines need help since dependencies are not in a
 # default location.
@@ -29,8 +30,10 @@ set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "")
 set(CMAKE_INSTALL_LIBDIR "lib" CACHE STRING "")
 
 # Enable extra build warnings in CI.
+set(VTK_EXTRA_COMPILER_WARNINGS ON CACHE BOOL "")
 set(VTK_ENABLE_EXTRA_BUILD_WARNINGS ON CACHE BOOL "")
 set(VTK_ENABLE_EXTRA_BUILD_WARNINGS_EVERYTHING ON CACHE BOOL "")
+set(VTK_LINKER_FATAL_WARNINGS ON CACHE BOOL "")
 
 include("${CMAKE_CURRENT_LIST_DIR}/configure_options.cmake")
 

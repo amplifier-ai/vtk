@@ -204,6 +204,7 @@ public:
   vtkOpenGLHelper* ColorPass;
 
   int Viewsize[2];
+  int ViewOrigin[2];
   vtkSmartPointer<vtkSurfaceLICComposite> Compositor;
   vtkSmartPointer<vtkOpenGLFramebufferObject> FBO;
 

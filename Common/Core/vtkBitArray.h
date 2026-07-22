@@ -53,25 +53,21 @@ public:
   static vtkBitArray* FastDownCast(vtkAbstractArray* source);
 
   /**
-   * Allocate memory for this array. Delete old storage only if necessary.
-   * Note that ext is no longer used.
+   * Reserve the array to the requested number of tuples and preserve data.
+   *
+   * Increasing the array capacity may allocate extra memory beyond what was
+   * requested. MaxId will not be modified when increasing array size.
+   *
+   * Decreasing the array capacity is effectively a no-op.
+   *
+   * Returns 1 if resizing succeeded and 0 otherwise.
    */
-  vtkTypeBool Allocate(vtkIdType sz, vtkIdType ext = 1000) override;
-
-  /**
-   * Release storage and reset array to initial state.
-   */
-  void Initialize() override;
+  vtkTypeBool ReserveTuples(vtkIdType numTuples) override;
 
   // satisfy vtkDataArray API
   int GetArrayType() const override { return vtkBitArray::ArrayTypeTag::value; }
   int GetDataType() const override { return vtkBitArray::DataTypeTag::value; }
   int GetDataTypeSize() const override { return 0; }
-
-  /**
-   * Set the number of n-tuples in the array.
-   */
-  void SetNumberOfTuples(vtkIdType number) override;
 
   /**
    * In addition to setting the number of values, this method also sets the
@@ -186,8 +182,6 @@ public:
    * NOT THREAD-SAFE
    */
   void RemoveTuple(vtkIdType id) override;
-  void RemoveFirstTuple() override;
-  void RemoveLastTuple() override;
   ///@}
 
   ///@{
@@ -204,14 +198,10 @@ public:
   ///@}
 
   /**
-   * Free any unneeded memory.
+   * Free any unnecessary memory.
+   * Resize object to just fit data requirement. Reclaims extra memory.
    */
-  void Squeeze() override { this->Resize(this->GetNumberOfTuples()); }
-
-  /**
-   * Resize the array while conserving the data.
-   */
-  vtkTypeBool Resize(vtkIdType numTuples) override;
+  void Squeeze() override;
 
   /**
    * Get component @a comp of the tuple at @a tupleIdx.
@@ -306,6 +296,8 @@ public:
    */
   ValueType* WritePointer(vtkIdType id, vtkIdType number);
 
+  VTK_DEPRECATED_IN_9_7_0("Use vtkBitArray::WritePointer(valueIdx, numValues) or "
+                          "vtkAbstractArray::SetNumberOf[Values/Tuples]() instead")
   void* WriteVoidPointer(vtkIdType id, vtkIdType number) override
   {
     return this->WritePointer(id, number);
@@ -423,12 +415,6 @@ protected:
   virtual void InitializeUnusedBitsInLastByte();
 
   /**
-   * Allocate space for numTuples. Old data is not preserved. If numTuples == 0,
-   * all data is freed.
-   */
-  bool AllocateTuples(vtkIdType numTuples);
-
-  /**
    * Allocate space for numTuples. Old data is preserved. If numTuples == 0, all data is freed.
    */
   bool ReallocateTuples(vtkIdType numTuples);
@@ -439,10 +425,10 @@ protected:
   /**
    * Function to resize data
    */
-  VTK_DEPRECATED_IN_9_7_0("Use Resize")
+  VTK_DEPRECATED_IN_9_7_0("Use ReserveTuples")
   ValueType* ResizeAndExtend(vtkIdType size)
   {
-    if (!this->Resize(size / this->NumberOfComponents + 1))
+    if (!this->ReserveTuples(size / this->NumberOfComponents + 1))
     {
       return nullptr;
     }
@@ -476,9 +462,9 @@ inline void vtkBitArray::SetValue(vtkIdType id, int value)
 
 inline void vtkBitArray::InsertValue(vtkIdType valueIdx, int value)
 {
-  if (valueIdx >= this->Size)
+  if (valueIdx >= this->Capacity)
   {
-    if (!this->Resize((valueIdx + 1) / this->NumberOfComponents + 1))
+    if (!this->ReserveTuples((valueIdx + 1) / this->NumberOfComponents + 1))
     {
       return;
     }

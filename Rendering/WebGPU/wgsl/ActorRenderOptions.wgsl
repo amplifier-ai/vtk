@@ -28,6 +28,16 @@ struct ActorRenderOptions {
   flags: u32,
   // Integer/boolean options encoded inside flags. See below get methods.
   flags_2: u32,
+  // Coincident topology polygon offset factor (for surface/triangle pipelines).
+  coin_polygon_factor: f32,
+  // Coincident topology polygon offset units (for surface/triangle pipelines).
+  coin_polygon_offset: f32,
+  // Coincident topology line offset factor (for wireframe/line pipelines).
+  coin_line_factor: f32,
+  // Coincident topology line offset units (for wireframe/line pipelines).
+  coin_line_offset: f32,
+  // Coincident topology point offset units (for point pipelines).
+  coin_point_offset: f32,
 }
 
 // Extracts representation from flags. Returns of VTK_POINTS, VTK_WIREFRAME or VTK_SURFACE.

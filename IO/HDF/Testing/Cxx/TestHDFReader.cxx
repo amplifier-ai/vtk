@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 #include "vtkAppendDataSets.h"
+#include "vtkAxisAlignedTransformFilter.h"
 #include "vtkFileResourceStream.h"
+#include "vtkGroupDataSetsFilter.h"
 #include "vtkHDFReader.h"
 #include "vtkHyperTreeGrid.h"
 #include "vtkHyperTreeGridSource.h"
 #include "vtkImageData.h"
 #include "vtkInformation.h"
+#include "vtkMultiBlockDataSet.h"
+#include "vtkMultiPieceDataSet.h"
 #include "vtkNew.h"
 #include "vtkOverlappingAMR.h"
 #include "vtkPartitionedDataSet.h"
@@ -61,17 +65,19 @@ int TestImageData(const std::string& dataRoot)
 {
   // ImageData file
   // ------------------------------------------------------------
-  std::string fileName = dataRoot + "/Data/mandelbrot-vti.hdf";
-  std::cout << "Testing: " << fileName << std::endl;
+  std::string fileName = dataRoot + "/Data/vtkHDF/mandelbrot-vti.vtkhdf";
+  vtkLog(INFO, "Testing: " << fileName.c_str());
   vtkNew<vtkHDFReader> reader;
   if (!reader->CanReadFile(fileName.c_str()))
   {
+    std::cerr << "Could not read file " << fileName << std::endl;
     return EXIT_FAILURE;
   }
   reader->SetFileName(fileName.c_str());
   reader->Update();
   vtkImageData* data = vtkImageData::SafeDownCast(reader->GetOutput());
-  vtkSmartPointer<vtkImageData> expectedData = ReadImageData(dataRoot + "/Data/mandelbrot.vti");
+  vtkSmartPointer<vtkImageData> expectedData =
+    ReadImageData(dataRoot + "/Data/vtkHDF/mandelbrot.vti");
 
   int* dims = data->GetDimensions();
   int* edims = expectedData->GetDimensions();
@@ -85,7 +91,7 @@ int TestImageData(const std::string& dataRoot)
     return EXIT_FAILURE;
   }
 
-  return !vtkTestUtilities::CompareDataObjects(data, expectedData, true);
+  return vtkTestUtilities::CompareDataObjects(data, expectedData) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 //----------------------------------------------------------------------------
@@ -93,18 +99,19 @@ int TestImageCellData(const std::string& dataRoot)
 {
   // ImageData file with cell data
   // ------------------------------------------------------------
-  std::string fileName = dataRoot + "/Data/wavelet_cell_data.hdf";
-  std::cout << "Testing: " << fileName << std::endl;
+  std::string fileName = dataRoot + "/Data/vtkHDF/wavelet_cell_data.vtkhdf";
+  vtkLog(INFO, "Testing: " << fileName.c_str());
   vtkNew<vtkHDFReader> reader;
   if (!reader->CanReadFile(fileName.c_str()))
   {
+    std::cerr << "Could not read file " << fileName << std::endl;
     return EXIT_FAILURE;
   }
   reader->SetFileName(fileName.c_str());
   reader->Update();
   vtkImageData* data = vtkImageData::SafeDownCast(reader->GetOutput());
   vtkSmartPointer<vtkImageData> expectedData =
-    ReadImageData(dataRoot + "/Data/wavelet_cell_data.vti");
+    ReadImageData(dataRoot + "/Data/vtkHDF/wavelet_cell_data.vti");
 
   int* dims = data->GetDimensions();
   int* edims = expectedData->GetDimensions();
@@ -118,7 +125,7 @@ int TestImageCellData(const std::string& dataRoot)
     return EXIT_FAILURE;
   }
 
-  return !vtkTestUtilities::CompareDataObjects(data, expectedData);
+  return vtkTestUtilities::CompareDataObjects(data, expectedData) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 //----------------------------------------------------------------------------
@@ -131,20 +138,21 @@ int TestUnstructuredGrid(const std::string& dataRoot, bool parallel)
   vtkXMLReader* oreader;
   if (parallel)
   {
-    fileName = dataRoot + "/Data/can-pvtu.hdf";
+    fileName = dataRoot + "/Data/vtkHDF/can-pvtu.vtkhdf";
     expectedName = dataRoot + "/Data/can.pvtu";
     oreader = expectedPReader;
   }
   else
   {
     // This file intentionally has Type attribute in variable-length string
-    fileName = dataRoot + "/Data/can-vtu.hdf";
+    fileName = dataRoot + "/Data/vtkHDF/can-vtu.vtkhdf";
     expectedName = dataRoot + "/Data/can.vtu";
     oreader = expectedReader;
   }
-  std::cout << "Testing: " << fileName << std::endl;
+  vtkLog(INFO, "Testing: " << fileName.c_str());
   if (!reader->CanReadFile(fileName.c_str()))
   {
+    std::cerr << "Could not read file " << fileName << std::endl;
     return EXIT_FAILURE;
   }
   reader->SetFileName(fileName.c_str());
@@ -168,13 +176,42 @@ int TestUnstructuredGrid(const std::string& dataRoot, bool parallel)
     vtkUnstructuredGrid::SafeDownCast(oreader->GetOutputAsDataSet());
   if (parallel)
   {
-    return !vtkTestUtilities::CompareDataObjects(
-      GetMergedBlocks(reader, VTK_UNSTRUCTURED_GRID), expectedData);
+    return vtkTestUtilities::CompareDataObjects(
+             GetMergedBlocks(reader, VTK_UNSTRUCTURED_GRID), expectedData)
+      ? EXIT_SUCCESS
+      : EXIT_FAILURE;
   }
   else
   {
-    return !vtkTestUtilities::CompareDataObjects(reader->GetOutputDataObject(0), expectedData);
+    return vtkTestUtilities::CompareDataObjects(reader->GetOutputDataObject(0), expectedData)
+      ? EXIT_SUCCESS
+      : EXIT_FAILURE;
   }
+}
+
+//----------------------------------------------------------------------------
+int TestMultiUGNoCellsPiece(const std::string& dataRoot)
+{
+  // Test file contains 2 UG blocks containing 2 pieces in a Multiblock.
+  // Assert that pieces without cells are read correctly and don't show -1 cells as before
+  // See https://gitlab.kitware.com/vtk/vtk/-/work_items/19923
+  std::string fileName = dataRoot + "/Data/vtkHDF/nocells_part.vtkhdf";
+  vtkNew<vtkHDFReader> reader;
+
+  reader->SetFileName(fileName.c_str());
+  reader->Update();
+
+  auto mb = vtkMultiBlockDataSet::SafeDownCast(reader->GetOutputDataObject(0));
+  auto mp = vtkMultiPieceDataSet::SafeDownCast(mb->GetBlock(0));
+  auto ug = vtkUnstructuredGrid::SafeDownCast(mp->GetPieceAsDataObject(1));
+  if (ug->GetNumberOfCells() != 0)
+  {
+    std::cerr << "Error: expected 0 cells in unstructured grid but got " << ug->GetNumberOfCells()
+              << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  return EXIT_SUCCESS;
 }
 
 //----------------------------------------------------------------------------
@@ -187,19 +224,20 @@ int TestPartitionedUnstructuredGrid(const std::string& dataRoot, bool parallel)
   vtkXMLReader* oreader;
   if (parallel)
   {
-    fileName = dataRoot + "/Data/can-pvtu.hdf";
+    fileName = dataRoot + "/Data/vtkHDF/can-pvtu.vtkhdf";
     expectedName = dataRoot + "/Data/can.pvtu";
     oreader = expectedPReader;
   }
   else
   {
-    fileName = dataRoot + "/Data/can-vtu.hdf";
+    fileName = dataRoot + "/Data/vtkHDF/can-vtu.vtkhdf";
     expectedName = dataRoot + "/Data/can.vtu";
     oreader = expectedReader;
   }
-  std::cout << "Testing: " << fileName << std::endl;
+  vtkLog(INFO, "Testing: " << fileName.c_str());
   if (!reader->CanReadFile(fileName.c_str()))
   {
+    std::cerr << "Could not read file " << fileName << std::endl;
     return EXIT_FAILURE;
   }
   reader->SetFileName(fileName.c_str());
@@ -232,19 +270,19 @@ int TestPartitionedUnstructuredGrid(const std::string& dataRoot, bool parallel)
   oreader->Update();
   vtkUnstructuredGrid* expectedData =
     vtkUnstructuredGrid::SafeDownCast(oreader->GetOutputAsDataSet());
-  return !vtkTestUtilities::CompareDataObjects(data, expectedData);
+  return vtkTestUtilities::CompareDataObjects(data, expectedData) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 //----------------------------------------------------------------------------
 int TestPolyData(const std::string& dataRoot)
 {
-  const std::string expectedName = dataRoot + "/Data/hdf_poly_data_twin.vtp";
+  const std::string expectedName = dataRoot + "/Data/vtkHDF/hdf_poly_data_twin.vtp";
   vtkNew<vtkXMLPolyDataReader> expectedReader;
   expectedReader->SetFileName(expectedName.c_str());
   expectedReader->Update();
   auto expectedData = vtkPolyData::SafeDownCast(expectedReader->GetOutput());
 
-  const std::string fileName = dataRoot + "/Data/test_poly_data.hdf";
+  const std::string fileName = dataRoot + "/Data/vtkHDF/test_poly_data.vtkhdf";
   vtkNew<vtkHDFReader> reader;
   reader->SetFileName(fileName.c_str());
   reader->Update();
@@ -257,26 +295,28 @@ int TestPolyData(const std::string& dataRoot)
     return EXIT_FAILURE;
   }
 
-  return !vtkTestUtilities::CompareDataObjects(
-    GetMergedBlocks(reader, VTK_POLY_DATA), expectedData);
+  return vtkTestUtilities::CompareDataObjects(GetMergedBlocks(reader, VTK_POLY_DATA), expectedData)
+    ? EXIT_SUCCESS
+    : EXIT_FAILURE;
 }
 
 //----------------------------------------------------------------------------
 int TestPolyDataStream(const std::string& dataRoot)
 {
-  const std::string expectedName = dataRoot + "/Data/hdf_poly_data_twin.vtp";
+  const std::string expectedName = dataRoot + "/Data/vtkHDF/hdf_poly_data_twin.vtp";
   vtkNew<vtkXMLPolyDataReader> expectedReader;
   expectedReader->SetFileName(expectedName.c_str());
   expectedReader->Update();
   auto expectedData = vtkPolyData::SafeDownCast(expectedReader->GetOutput());
 
-  const std::string fileName = dataRoot + "/Data/test_poly_data.hdf";
+  const std::string fileName = dataRoot + "/Data/vtkHDF/test_poly_data.vtkhdf";
   vtkNew<vtkFileResourceStream> fileStream;
   fileStream->Open(fileName.c_str());
 
   vtkNew<vtkHDFReader> reader;
   if (!vtkHDFReader::CanReadFile(fileStream))
   {
+    std::cerr << "Could not read file " << fileName << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -291,8 +331,9 @@ int TestPolyDataStream(const std::string& dataRoot)
     return EXIT_FAILURE;
   }
 
-  return !vtkTestUtilities::CompareDataObjects(
-    GetMergedBlocks(reader, VTK_POLY_DATA), expectedData);
+  return vtkTestUtilities::CompareDataObjects(GetMergedBlocks(reader, VTK_POLY_DATA), expectedData)
+    ? EXIT_SUCCESS
+    : EXIT_FAILURE;
 }
 
 //----------------------------------------------------------------------------
@@ -334,13 +375,13 @@ int TestUTF8Type(const std::string& dataRoot)
 
 int TestPartitionedPolyData(const std::string& dataRoot)
 {
-  const std::string expectedName = dataRoot + "/Data/hdf_poly_data_twin.vtp";
+  const std::string expectedName = dataRoot + "/Data/vtkHDF/hdf_poly_data_twin.vtp";
   vtkNew<vtkXMLPolyDataReader> expectedReader;
   expectedReader->SetFileName(expectedName.c_str());
   expectedReader->Update();
   auto expectedData = vtkPolyData::SafeDownCast(expectedReader->GetOutput());
 
-  const std::string fileName = dataRoot + "/Data/test_poly_data.hdf";
+  const std::string fileName = dataRoot + "/Data/vtkHDF/test_poly_data.vtkhdf";
   vtkNew<vtkHDFReader> reader;
   reader->SetFileName(fileName.c_str());
   reader->Update();
@@ -361,17 +402,18 @@ int TestPartitionedPolyData(const std::string& dataRoot)
 
   auto data = vtkPolyData::SafeDownCast(appender->GetOutput());
 
-  return !vtkTestUtilities::CompareDataObjects(data, expectedData);
+  return vtkTestUtilities::CompareDataObjects(data, expectedData) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 //----------------------------------------------------------------------------
 int TestOverlappingAMR(const std::string& dataRoot, unsigned int maxLevel)
 {
-  std::string fileName = dataRoot + "/Data/amr_gaussian_pulse.hdf";
-  std::cout << "Testing: " << fileName << std::endl;
+  std::string fileName = dataRoot + "/Data/vtkHDF/amr_gaussian_pulse.vtkhdf";
+  vtkLog(INFO, "Testing: " << fileName.c_str());
   vtkNew<vtkHDFReader> reader;
   if (!reader->CanReadFile(fileName.c_str()))
   {
+    std::cerr << "Could not read file " << fileName << std::endl;
     return EXIT_FAILURE;
   }
   reader->SetFileName(fileName.c_str());
@@ -380,7 +422,7 @@ int TestOverlappingAMR(const std::string& dataRoot, unsigned int maxLevel)
   auto data = vtkOverlappingAMR::SafeDownCast(reader->GetOutput());
 
   vtkNew<vtkXMLUniformGridAMRReader> outputReader;
-  std::string expectedFileName = dataRoot + "/Data/amr_gaussian_pulse.vthb";
+  std::string expectedFileName = dataRoot + "/Data/vtkHDF/amr_gaussian_pulse.vthb";
   outputReader->SetFileName(expectedFileName.c_str());
   outputReader->SetMaximumLevelsToReadByDefault(maxLevel);
   outputReader->Update();
@@ -425,8 +467,8 @@ int TestCompositeDataSet(const std::string& dataRoot)
 {
   // This dataset is composed of 4 blocks : 2 polydata, 1 image data, 1 unstructured grid, 1
   // HyperTreeGrid
-  const std::string hdfPath = dataRoot + "/Data/vtkHDF/test_composite.hdf";
-  std::cout << "Testing: " << hdfPath << std::endl;
+  const std::string hdfPath = dataRoot + "/Data/vtkHDF/test_composite.vtkhdf";
+  vtkLog(INFO, "Testing: " << hdfPath.c_str());
 
   vtkNew<vtkHDFReader> expectedReader;
   expectedReader->SetFileName(hdfPath.c_str());
@@ -442,20 +484,20 @@ int TestCompositeDataSet(const std::string& dataRoot)
     return EXIT_FAILURE;
   }
 
-  const std::string vtpcPath = dataRoot + "/Data/vtkHDF/test_composite.hdf_000000.vtpc";
+  const std::string vtpcPath = dataRoot + "/Data/vtkHDF/test_composite.vtkhdf_000000.vtpc";
   vtkNew<vtkXMLPartitionedDataSetCollectionReader> reader;
   reader->SetFileName(vtpcPath.c_str());
   reader->Update();
   auto data = vtkPartitionedDataSetCollection::SafeDownCast(reader->GetOutput());
 
-  return !vtkTestUtilities::CompareDataObjects(data, expectedData);
+  return vtkTestUtilities::CompareDataObjects(data, expectedData) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 //------------------------------------------------------------------------------
 int TestRandomHyperTreeGrid(const std::string& dataRoot)
 {
-  const std::string hdfPath = dataRoot + "/Data/vtkHDF/randomhtg.hdf";
-  std::cout << "Testing: " << hdfPath << std::endl;
+  const std::string hdfPath = dataRoot + "/Data/vtkHDF/randomhtg.vtkhdf";
+  vtkLog(INFO, "Testing: " << hdfPath.c_str());
 
   vtkNew<vtkHDFReader> reader;
   reader->SetFileName(hdfPath.c_str());
@@ -470,14 +512,46 @@ int TestRandomHyperTreeGrid(const std::string& dataRoot)
   source->Update();
   vtkHyperTreeGrid* expectedHTG = source->GetHyperTreeGridOutput();
 
-  return !vtkTestUtilities::CompareDataObjects(expectedHTG, readData);
+  return vtkTestUtilities::CompareDataObjects(expectedHTG, readData) ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+//------------------------------------------------------------------------------
+int TestHyperTreeGridPartitionedCoords(const std::string& dataRoot)
+{
+  // Test that coordinates are read correctly
+  const std::string hdfPath = dataRoot + "/Data/vtkHDF/htg_3parts_coords.vtkhdf";
+  vtkLog(INFO, "Testing: " << hdfPath.c_str());
+
+  vtkNew<vtkHDFReader> reader;
+  reader->SetFileName(hdfPath.c_str());
+  reader->Update();
+  vtkPartitionedDataSet* readData = vtkPartitionedDataSet::SafeDownCast(reader->GetOutput());
+
+  vtkNew<vtkRandomHyperTreeGridSource> source;
+  vtkNew<vtkAxisAlignedTransformFilter> aligned1;
+  aligned1->SetTranslation(1.0, 1.0, 0.0);
+  aligned1->SetInputConnection(source->GetOutputPort());
+  vtkNew<vtkAxisAlignedTransformFilter> aligned2;
+  aligned2->SetTranslation(2.0, 2.0, 0.0);
+  aligned2->SetInputConnection(aligned1->GetOutputPort());
+  vtkNew<vtkGroupDataSetsFilter> group;
+  group->SetOutputTypeToPartitionedDataSet();
+  group->AddInputConnection(source->GetOutputPort());
+  group->AddInputConnection(aligned1->GetOutputPort());
+  group->AddInputConnection(aligned2->GetOutputPort());
+  group->Update();
+
+  vtkPartitionedDataSet* expectedPart =
+    vtkPartitionedDataSet::SafeDownCast(group->GetOutputDataObject(0));
+
+  return vtkTestUtilities::CompareDataObjects(expectedPart, readData) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 //------------------------------------------------------------------------------
 int TestSimpleHyperTreeGrid(const std::string& dataRoot)
 {
-  const std::string hdfPath = dataRoot + "/Data/vtkHDF/simple_htg.hdf";
-  std::cout << "Testing: " << hdfPath << std::endl;
+  const std::string hdfPath = dataRoot + "/Data/vtkHDF/simple_htg.vtkhdf";
+  vtkLog(INFO, "Testing: " << hdfPath.c_str());
 
   vtkNew<vtkHDFReader> reader;
   reader->SetFileName(hdfPath.c_str());
@@ -497,8 +571,8 @@ int TestSimpleHyperTreeGrid(const std::string& dataRoot)
 //------------------------------------------------------------------------------
 int TestPartitionedHyperTreeGrid(const std::string& dataRoot)
 {
-  const std::string hdfPath = dataRoot + "/Data/vtkHDF/multipiece_htg.hdf";
-  std::cout << "Testing: " << hdfPath << std::endl;
+  const std::string hdfPath = dataRoot + "/Data/vtkHDF/multipiece_htg.vtkhdf";
+  vtkLog(INFO, "Testing: " << hdfPath.c_str());
 
   vtkNew<vtkHDFReader> reader;
   reader->SetFileName(hdfPath.c_str());
@@ -543,9 +617,9 @@ int TestPartitionedHyperTreeGrid(const std::string& dataRoot)
 //------------------------------------------------------------------------------
 int TestHyperTreeGridWithInterfaces(const std::string& dataRoot)
 {
-  const std::string hdfPath = dataRoot + "/Data/vtkHDF/shell_3d.hdf";
+  const std::string hdfPath = dataRoot + "/Data/vtkHDF/shell_3d.vtkhdf";
   const std::string xmlPath = dataRoot + "/Data/HTG/shell_3d.htg";
-  std::cout << "Testing: " << hdfPath << std::endl;
+  vtkLog(INFO, "Testing: " << hdfPath.c_str());
 
   vtkNew<vtkHDFReader> reader;
   reader->SetFileName(hdfPath.c_str());
@@ -575,7 +649,7 @@ int TestUnstructuredGridPolyhedron(const std::string& dataRoot)
 
     std::string hdfFile = dataRoot + "/Data/vtkHDF/" + file + ".vtkhdf";
     std::string vtuFile = dataRoot + "/Data/vtkHDF/" + file + ".vtu";
-    std::cout << "Testing: " << hdfFile << std::endl;
+    vtkLog(INFO, "Testing: " << hdfFile.c_str());
 
     vtkNew<vtkHDFReader> reader;
     reader->SetFileName(hdfFile.c_str());
@@ -611,96 +685,28 @@ int TestHDFReader(int argc, char* argv[])
 
   std::string dataRoot = testHelper->GetDataRoot();
 
-  if (TestImageData(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
+  int failure = EXIT_SUCCESS;
+  failure |= TestImageData(dataRoot);
+  failure |= TestImageCellData(dataRoot);
+  failure |= TestUnstructuredGrid(dataRoot, false);
+  failure |= TestUnstructuredGridPolyhedron(dataRoot);
+  failure |= TestUnstructuredGrid(dataRoot, true);
+  failure |= TestMultiUGNoCellsPiece(dataRoot);
+  failure |= TestPolyData(dataRoot);
+  failure |= TestPolyDataStream(dataRoot);
+  failure |= TestNullTerminatedString(dataRoot);
+  failure |= TestUTF8Type(dataRoot);
+  failure |= TestOverlappingAMR(dataRoot, 2);
+  failure |= TestOverlappingAMR(dataRoot, 1);
+  failure |= TestPartitionedPolyData(dataRoot);
+  failure |= TestPartitionedUnstructuredGrid(dataRoot, false);
+  failure |= TestPartitionedUnstructuredGrid(dataRoot, true);
+  failure |= TestCompositeDataSet(dataRoot);
+  failure |= TestSimpleHyperTreeGrid(dataRoot);
+  failure |= TestRandomHyperTreeGrid(dataRoot);
+  failure |= TestHyperTreeGridPartitionedCoords(dataRoot);
+  failure |= TestPartitionedHyperTreeGrid(dataRoot);
+  failure |= TestHyperTreeGridWithInterfaces(dataRoot);
 
-  if (TestImageCellData(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestUnstructuredGrid(dataRoot, false))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestUnstructuredGridPolyhedron(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-  if (TestUnstructuredGrid(dataRoot, true))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestPolyData(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestPolyDataStream(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestNullTerminatedString(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestUTF8Type(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestOverlappingAMR(dataRoot, 2))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestOverlappingAMR(dataRoot, 1))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestPartitionedPolyData(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestPartitionedUnstructuredGrid(dataRoot, false))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestPartitionedUnstructuredGrid(dataRoot, true))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestCompositeDataSet(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-
-  if (TestSimpleHyperTreeGrid(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-  if (TestRandomHyperTreeGrid(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-  if (TestPartitionedHyperTreeGrid(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-  if (TestHyperTreeGridWithInterfaces(dataRoot))
-  {
-    return EXIT_FAILURE;
-  }
-
-  return EXIT_SUCCESS;
+  return failure;
 }

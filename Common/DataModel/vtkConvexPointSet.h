@@ -196,16 +196,16 @@ public:
 
 protected:
   vtkConvexPointSet();
-  ~vtkConvexPointSet() override;
+  ~vtkConvexPointSet() override = default;
 
-  vtkTetra* Tetra;
-  vtkIdList* TetraIds;
-  vtkPoints* TetraPoints;
-  vtkDoubleArray* TetraScalars;
+  vtkSmartPointer<vtkTetra> Tetra;
+  vtkSmartPointer<vtkIdList> TetraIds;
+  vtkSmartPointer<vtkPoints> TetraPoints;
+  vtkSmartPointer<vtkDoubleArray> TetraScalars;
 
-  vtkCellArray* BoundaryTris;
-  vtkTriangle* Triangle;
-  vtkDoubleArray* ParametricCoords;
+  vtkSmartPointer<vtkCellArray> BoundaryTris;
+  vtkSmartPointer<vtkTriangle> Triangle;
+  vtkSmartPointer<vtkDoubleArray> ParametricCoords;
 
 private:
   vtkConvexPointSet(const vtkConvexPointSet&) = delete;

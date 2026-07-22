@@ -150,12 +150,32 @@ public:
    *       milliseconds by calling SetTimeout().
    * @sa SetTimeout(), GetTimeout()
    */
+  VTK_MAYSUSPEND
   bool Initialize();
 
   /**
+   * Destroys the WebGPU device and adapter without releasing the shared instance.
+   * Use this when you need to perform platform-specific cleanup (e.g., closing an X11
+   * Display connection) between device destruction and instance release. After calling
+   * this, call Finalize() to release the instance.
+   */
+  void FinalizeDevice();
+
+  /**
    * Finalizes the class.
-   * This method destroys the device, adapter and releases the reference to `WGPUInstance` if not
-   * already done.
+   * This method destroys the device, adapter (via FinalizeDevice() if not already called) and
+   * releases the reference to `WGPUInstance`.
+   *
+   * On X11, callers with a Display connection to manage (e.g. vtkWebGPURenderWindow) must call
+   * FinalizeDevice() and close the Display *before* calling this method, to work around an
+   * NVIDIA Vulkan driver bug where GLX extension initialization is deferred until device
+   * destruction: the driver registers Display close handlers during that deferred
+   * initialization, so closing the Display before the device/adapter are destroyed causes those
+   * handlers to touch freed memory. Destroying the device first (FinalizeDevice()) while keeping
+   * the instance - and therefore the ICD shared library - loaded, then closing the Display, then
+   * calling Finalize() to release the instance, avoids the crash.
+   *
+   * @sa FinalizeDevice(), vtkWebGPURenderWindow::Finalize()
    */
   void Finalize();
 
@@ -166,6 +186,7 @@ public:
    *       `-sJSPI=1` for `emscripten_sleep` to yield to the browsers run loop for processing
    *       webgpu callbacks.
    */
+  VTK_MAYSUSPEND
   void ProcessEvents();
 
   /**
@@ -223,7 +244,7 @@ public:
    * which is useful to audit GPU memory usage. It avoids creating buffers larger
    * than supported by the device.
    */
-  wgpu::Buffer CreateBuffer(unsigned long sizeBytes, wgpu::BufferUsage usage,
+  wgpu::Buffer CreateBuffer(std::uint64_t sizeBytes, wgpu::BufferUsage usage,
     bool mappedAtCreation = false, const char* label = nullptr);
   wgpu::Buffer CreateBuffer(const wgpu::BufferDescriptor& bufferDescriptor);
   ///@}
@@ -232,8 +253,8 @@ public:
    * Convenient method used to write data into an existing buffer. This method also logs memory
    * information which is useful to audit GPU memory usage.
    */
-  void WriteBuffer(const wgpu::Buffer& buffer, unsigned long offset, const void* data,
-    unsigned long sizeBytes, const char* description = nullptr);
+  void WriteBuffer(const wgpu::Buffer& buffer, std::uint64_t offset, const void* data,
+    std::size_t sizeBytes, const char* description = nullptr);
 
   ///@{
   /**
@@ -290,6 +311,13 @@ protected:
   vtkWebGPUConfiguration();
   ~vtkWebGPUConfiguration() override;
 
+private:
+  vtkWebGPUConfiguration(const vtkWebGPUConfiguration&) = delete;
+  void operator=(const vtkWebGPUConfiguration&) = delete;
+
+  friend class vtkWebGPUConfigurationInternals;
+  std::unique_ptr<vtkWebGPUConfigurationInternals> Internals;
+
   PowerPreferenceType PowerPreference = PowerPreferenceType::HighPerformance;
   // Initialized in constructor at runtime based on the operating system.
   BackendType Backend;
@@ -297,13 +325,9 @@ protected:
   double Timeout;
 
   vtkLogger::Verbosity GPUMemoryLogVerbosity = vtkLogger::VERBOSITY_INVALID;
-
-private:
-  vtkWebGPUConfiguration(const vtkWebGPUConfiguration&) = delete;
-  void operator=(const vtkWebGPUConfiguration&) = delete;
-
-  friend class vtkWebGPUConfigurationInternals;
-  std::unique_ptr<vtkWebGPUConfigurationInternals> Internals;
+  // Tracks whether AddInstanceRef() was called so Finalize() can release it
+  // even after FinalizeDevice() has already set DeviceReady=false.
+  bool InstanceRefHeld = false;
 };
 
 VTK_ABI_NAMESPACE_END

@@ -52,6 +52,7 @@ vtkGLSLModLight::LightStatsBasic vtkGLSLModLight::GetBasicLightStats(
   {
     stats.Complexity = renderer->GetLightingComplexity();
     stats.Count = renderer->GetLightingCount();
+    stats.IBL = renderer->GetUseImageBasedLighting();
   }
   return stats;
 }
@@ -105,9 +106,11 @@ bool vtkGLSLModLight::ReplaceShaderValues(vtkOpenGLRenderer* renderer, std::stri
   auto stats = vtkGLSLModLight::GetBasicLightStats(renderer, actor);
   this->LastLightComplexity = stats.Complexity;
   this->LastLightCount = stats.Count;
+  this->LastLightIBL = stats.IBL;
 
   int lastLightComplexity = this->LastLightComplexity;
   int lastLightCount = this->LastLightCount;
+  bool hasIBL = this->LastLightIBL;
 
   if (actor->GetProperty()->GetInterpolation() != VTK_PBR && lastLightCount == 0)
   {
@@ -126,21 +129,15 @@ bool vtkGLSLModLight::ReplaceShaderValues(vtkOpenGLRenderer* renderer, std::stri
   vtkShaderProgram::Substitute(fragmentShader, "//VTK::Normal::Impl",
     "  vec3 normalizedNormalVCVSOutput = normalize(vertexNormalVCVS);", false);
 
-  bool hasIBL = false;
   std::ostringstream oss;
-  if (actor->GetProperty()->GetInterpolation() == VTK_PBR && lastLightComplexity > 0)
+  if (actor->GetProperty()->GetInterpolation() == VTK_PBR)
   {
-    // PBR functions
-    vtkShaderProgram::Substitute(fragmentShader, "//VTK::Light::Dec", vtkPBRFunctions);
-
     // disable default behavior with textures
     vtkShaderProgram::Substitute(fragmentShader, "//VTK::TCoord::Impl", "");
 
-    // get color and material from textures
-    auto textures = actor->GetProperty()->GetAllTextures();
+    // get albedo from textures
+    const auto& textures = actor->GetProperty()->GetAllTextures();
     bool albedo = false;
-    bool material = false;
-    bool emissive = false;
 
     if (this->UsePBRTextures)
     {
@@ -153,33 +150,7 @@ bool vtkGLSLModLight::ReplaceShaderValues(vtkOpenGLRenderer* renderer, std::stri
                  "  vec3 albedo = albedoSample.rgb * diffuseColor;\n"
                  "  opacity = intensity_opacity * albedoSample.a;\n";
         }
-        else if (t.first == "materialTex")
-        {
-          // we are using GLTF specification here with a combined texture holding values for AO,
-          // roughness and metallic on R,G,B channels respectively
-          material = true;
-          oss << "  vec4 material = texture(materialTex, tcoordVCVSOutput);\n"
-                 "  float roughness = material.g * roughnessUniform;\n"
-                 "  float metallic = material.b * metallicUniform;\n"
-                 "  float ao = material.r;\n";
-        }
-        else if (t.first == "emissiveTex")
-        {
-          emissive = true;
-          oss << "  vec3 emissiveColor = texture(emissiveTex, tcoordVCVSOutput).rgb;\n"
-                 "  emissiveColor = emissiveColor * emissiveFactorUniform;\n";
-        }
-        // Anisotropy texture is sampled by mappers.
       }
-    }
-    vtkOpenGLRenderer* oglRen = vtkOpenGLRenderer::SafeDownCast(renderer);
-
-    // IBL
-    if (oglRen && renderer->GetUseImageBasedLighting())
-    {
-      hasIBL = true;
-      oss << "  const float prefilterMaxLevel = float("
-          << (oglRen->GetEnvMapPrefiltered()->GetPrefilterLevels() - 1) << ");\n";
     }
 
     if (!albedo)
@@ -187,110 +158,152 @@ bool vtkGLSLModLight::ReplaceShaderValues(vtkOpenGLRenderer* renderer, std::stri
       // VTK colors are expressed in linear color space
       oss << "vec3 albedo = diffuseColor;\n";
     }
-    if (!material)
+
+    vtkOpenGLRenderer* oglRen = vtkOpenGLRenderer::SafeDownCast(renderer);
+
+    if (lastLightComplexity > 0)
     {
-      oss << "  float roughness = roughnessUniform;\n";
-      oss << "  float metallic = metallicUniform;\n";
-      oss << "  float ao = 1.0;\n";
-    }
-    if (!emissive)
-    {
-      oss << "  vec3 emissiveColor = vec3(0.0);\n";
-    }
+      // PBR functions
+      vtkShaderProgram::Substitute(fragmentShader, "//VTK::Light::Dec", vtkPBRFunctions);
 
-    oss << "  vec3 N = normalizedNormalVCVSOutput;\n"
-           "  vec3 V = normalize(-vertexVC.xyz);\n"
-           "  float NdV = clamp(dot(N, V), 1e-5, 1.0);\n";
+      // get material/emissive from textures
+      bool material = false;
+      bool emissive = false;
 
-    if (this->UseAnisotropy)
-    {
-      // Load anisotropic functions
-      vtkShaderProgram::Substitute(fragmentShader, "//VTK::Define::Dec",
-        "#define ANISOTROPY\n"
-        "//VTK::Define::Dec");
-
-      // Precompute anisotropic parameters
-      // at and ab are the roughness along the tangent and bitangent
-      // Disney, as in OSPray
-      oss << "  float r2 = roughness * roughness;\n"
-             "  float aspect = sqrt(1.0 - 0.9 * anisotropy);\n";
-      oss << "  float at = max(r2 / aspect, 0.001);\n"
-             "  float ab = max(r2 * aspect, 0.001);\n";
-
-      oss << "  float TdV = dot(tangentVC, V);\n"
-             "  float BdV = dot(bitangentVC, V);\n";
-    }
-
-    if (this->UseClearCoat)
-    {
-      // Load clear coat uniforms
-      vtkShaderProgram::Substitute(fragmentShader, "//VTK::Define::Dec",
-        "#define CLEAR_COAT\n"
-        "//VTK::Define::Dec");
-
-      // Clear coat parameters
-      oss << "  vec3 coatN = coatNormalVCVSOutput;\n";
-      oss << "  float coatRoughness = coatRoughnessUniform;\n";
-      oss << "  float coatStrength = coatStrengthUniform;\n";
-      oss << "  float coatNdV = clamp(dot(coatN, V), 1e-5, 1.0);\n";
-    }
-
-    if (hasIBL)
-    {
-      if (!oglRen->GetUseSphericalHarmonics())
+      if (this->UsePBRTextures)
       {
-        oss << "  vec3 irradiance = texture(irradianceTex, envMatrix*N).rgb;\n";
+        for (auto& t : textures)
+        {
+          if (t.first == "materialTex")
+          {
+            // we are using GLTF specification here with a combined texture holding values for AO,
+            // roughness and metallic on R,G,B channels respectively
+            material = true;
+            oss << "  vec4 material = texture(materialTex, tcoordVCVSOutput);\n"
+                   "  float roughness = material.g * roughnessUniform;\n"
+                   "  float metallic = material.b * metallicUniform;\n"
+                   "  float ao = material.r;\n";
+          }
+          else if (t.first == "emissiveTex")
+          {
+            emissive = true;
+            oss << "  vec3 emissiveColor = texture(emissiveTex, tcoordVCVSOutput).rgb;\n"
+                   "  emissiveColor = emissiveColor * emissiveFactorUniform;\n";
+          }
+          // Anisotropy texture is sampled by mappers.
+        }
       }
-      else
+
+      if (!material)
       {
-        oss << "  vec3 rotN = envMatrix * N;\n";
-        oss << "  vec3 irradiance = vec3(ComputeSH(rotN, shRed), ComputeSH(rotN, shGreen), "
-               "ComputeSH(rotN, shBlue));\n";
+        oss << "  float roughness = roughnessUniform;\n";
+        oss << "  float metallic = metallicUniform;\n";
+        oss << "  float ao = 1.0;\n";
       }
+      if (!emissive)
+      {
+        oss << "  vec3 emissiveColor = vec3(0.0);\n";
+      }
+
+      // IBL
+      if (hasIBL)
+      {
+        oss << "  const float prefilterMaxLevel = float("
+            << (oglRen->GetEnvMapPrefiltered()->GetPrefilterLevels() - 1) << ");\n";
+      }
+
+      oss << "  vec3 N = normalizedNormalVCVSOutput;\n"
+             "  vec3 V = normalize(-vertexVC.xyz);\n"
+             "  float NdV = clamp(dot(N, V), 1e-5, 1.0);\n";
 
       if (this->UseAnisotropy)
       {
-        oss << "  vec3 anisotropicTangent = cross(bitangentVC, V);\n"
-               "  vec3 anisotropicNormal = cross(anisotropicTangent, bitangentVC);\n"
-               "  vec3 bentNormal = normalize(mix(N, anisotropicNormal, anisotropy));\n"
-               "  vec3 worldReflect = normalize(envMatrix*reflect(-V, bentNormal));\n";
+        // Load anisotropic functions
+        vtkShaderProgram::Substitute(fragmentShader, "//VTK::Define::Dec",
+          "#define ANISOTROPY\n"
+          "//VTK::Define::Dec");
+
+        // Precompute anisotropic parameters
+        // at and ab are the roughness along the tangent and bitangent
+        // Disney, as in OSPray
+        oss << "  float r2 = roughness * roughness;\n"
+               "  float aspect = sqrt(1.0 - 0.9 * anisotropy);\n";
+        oss << "  float at = max(r2 / aspect, 0.001);\n"
+               "  float ab = max(r2 * aspect, 0.001);\n";
+
+        oss << "  float TdV = dot(tangentVC, V);\n"
+               "  float BdV = dot(bitangentVC, V);\n";
+      }
+
+      if (this->UseClearCoat)
+      {
+        // Load clear coat uniforms
+        vtkShaderProgram::Substitute(fragmentShader, "//VTK::Define::Dec",
+          "#define CLEAR_COAT\n"
+          "//VTK::Define::Dec");
+
+        // Clear coat parameters
+        oss << "  vec3 coatN = coatNormalVCVSOutput;\n";
+        oss << "  float coatRoughness = coatRoughnessUniform;\n";
+        oss << "  float coatStrength = coatStrengthUniform;\n";
+        oss << "  float coatNdV = clamp(dot(coatN, V), 1e-5, 1.0);\n";
+      }
+
+      if (hasIBL)
+      {
+        if (!oglRen->GetUseSphericalHarmonics())
+        {
+          oss << "  vec3 irradiance = texture(irradianceTex, envMatrix*N).rgb;\n";
+        }
+        else
+        {
+          oss << "  vec3 rotN = envMatrix * N;\n";
+          oss << "  vec3 irradiance = vec3(ComputeSH(rotN, shRed), ComputeSH(rotN, shGreen), "
+                 "ComputeSH(rotN, shBlue));\n";
+        }
+
+        if (this->UseAnisotropy)
+        {
+          oss << "  vec3 anisotropicTangent = cross(bitangentVC, V);\n"
+                 "  vec3 anisotropicNormal = cross(anisotropicTangent, bitangentVC);\n"
+                 "  vec3 bentNormal = normalize(mix(N, anisotropicNormal, anisotropy));\n"
+                 "  vec3 worldReflect = normalize(envMatrix*reflect(-V, bentNormal));\n";
+        }
+        else
+        {
+          oss << "  vec3 worldReflect = normalize(envMatrix*reflect(-V, N));\n";
+        }
+
+        oss << "  vec3 prefilteredSpecularColor = textureLod(prefilterTex, worldReflect,"
+               " roughness * prefilterMaxLevel).rgb;\n";
+        oss << "  vec2 brdf = texture(brdfTex, vec2(NdV, roughness)).rg;\n";
+
+        // Use the same prefilter texture for clear coat but with the clear coat roughness and
+        // normal
+
+        if (this->UseClearCoat)
+        {
+          oss << "  vec3 coatWorldReflect = normalize(envMatrix*reflect(-V,coatN));\n"
+                 "  vec3 prefilteredSpecularCoatColor = textureLod(prefilterTex, coatWorldReflect,"
+                 " coatRoughness * prefilterMaxLevel).rgb;\n"
+                 "  vec2 coatBrdf = texture(brdfTex, vec2(coatNdV, coatRoughness)).rg;\n";
+        }
       }
       else
       {
-        oss << "  vec3 worldReflect = normalize(envMatrix*reflect(-V, N));\n";
+        oss << "  vec3 irradiance = vec3(0.0);\n";
+        oss << "  vec3 prefilteredSpecularColor = vec3(0.0);\n";
+        oss << "  vec2 brdf = vec2(0.0, 0.0);\n";
+
+        if (this->UseClearCoat)
+        {
+          oss << "  vec3 prefilteredSpecularCoatColor = vec3(0.0);\n";
+          oss << "  vec2 coatBrdf = vec2(0.0);\n";
+        }
       }
 
-      oss << "  vec3 prefilteredSpecularColor = textureLod(prefilterTex, worldReflect,"
-             " roughness * prefilterMaxLevel).rgb;\n";
-      oss << "  vec2 brdf = texture(brdfTex, vec2(NdV, roughness)).rg;\n";
+      oss << "  vec3 Lo = vec3(0.0);\n";
 
-      // Use the same prefilter texture for clear coat but with the clear coat roughness and normal
-
-      if (this->UseClearCoat)
-      {
-        oss << "  vec3 coatWorldReflect = normalize(envMatrix*reflect(-V,coatN));\n"
-               "  vec3 prefilteredSpecularCoatColor = textureLod(prefilterTex, coatWorldReflect,"
-               " coatRoughness * prefilterMaxLevel).rgb;\n"
-               "  vec2 coatBrdf = texture(brdfTex, vec2(coatNdV, coatRoughness)).rg;\n";
-      }
-    }
-    else
-    {
-      oss << "  vec3 irradiance = vec3(0.0);\n";
-      oss << "  vec3 prefilteredSpecularColor = vec3(0.0);\n";
-      oss << "  vec2 brdf = vec2(0.0, 0.0);\n";
-
-      if (this->UseClearCoat)
-      {
-        oss << "  vec3 prefilteredSpecularCoatColor = vec3(0.0);\n";
-        oss << "  vec2 coatBrdf = vec2(0.0);\n";
-      }
-    }
-
-    oss << "  vec3 Lo = vec3(0.0);\n";
-
-    if (lastLightComplexity != 0)
-    {
       oss << "  vec3 F0 = mix(vec3(baseF0Uniform), albedo, metallic);\n"
              // specular occlusion, it affects only material with an f0 < 0.02,
              // else f90 is 1.0
@@ -361,10 +374,20 @@ bool vtkGLSLModLight::ReplaceShaderValues(vtkOpenGLRenderer* renderer, std::stri
   switch (lastLightComplexity)
   {
     case 0: // no lighting
-      vtkShaderProgram::Substitute(fragmentShader, "//VTK::Light::Impl",
-        "gl_FragData[0] = vec4(ambientColor + diffuseColor, opacity);\n"
-        "  //VTK::Light::Impl\n",
-        false);
+      if (actor->GetProperty()->GetInterpolation() == VTK_PBR)
+      {
+        vtkShaderProgram::Substitute(fragmentShader, "//VTK::Light::Impl",
+          "gl_FragData[0] = vec4(albedo, opacity);\n"
+          "  //VTK::Light::Impl\n",
+          false);
+      }
+      else
+      {
+        vtkShaderProgram::Substitute(fragmentShader, "//VTK::Light::Impl",
+          "gl_FragData[0] = vec4(ambientColor + diffuseColor, opacity);\n"
+          "  //VTK::Light::Impl\n",
+          false);
+      }
       break;
     case 1: // headlight
       if (actor->GetProperty()->GetInterpolation() == VTK_PBR)
@@ -646,22 +669,38 @@ bool vtkGLSLModLight::ReplaceShaderValues(vtkOpenGLRenderer* renderer, std::stri
       break;
   }
 
-  if (actor->GetProperty()->GetInterpolation() == VTK_PBR && lastLightComplexity > 0)
+  if (actor->GetProperty()->GetInterpolation() == VTK_PBR)
   {
     oss.str("");
 
-    oss << "  // In IBL, we assume that v=n, so the amount of light reflected is\n"
-           "  // the reflectance F0\n"
-           "  vec3 specularBrdf = F0 * brdf.r + F90 * brdf.g;\n"
-           "  vec3 iblSpecular = prefilteredSpecularColor * specularBrdf;\n"
-           // no diffuse for metals
-           "  vec3 iblDiffuse = (1.0 - F0) * (1.0 - metallic) * irradiance * albedo;\n"
-           "  vec3 color = iblDiffuse + iblSpecular;\n"
-           "\n";
-
-    if (this->UseClearCoat)
+    if (lastLightComplexity > 0)
     {
-      oss << "  // Clear coat attenuation\n"
+      if (hasIBL)
+      {
+        oss << "  // Multi-scatter approximation: see https://bruop.github.io/ibl/\n"
+               "  diffuse = (1.0 - metallic) * (1.0 - 0.04) * albedo;\n"
+               "  vec3 Fr = max(vec3(1.0 - roughness), F0) - F0;\n"
+               "  vec3 k_S = F0 + Fr * pow(1.0 - NdV, 5.0);\n"
+               "  vec3 FssEss = k_S * brdf.r + F90 * brdf.g;\n"
+               "  float Ems = 1.0 - (brdf.r + brdf.g);\n"
+               "  vec3 F_avg = F0 + (1.0 - F0) / 21.0;\n"
+               "  vec3 FmsEms = Ems * FssEss * F_avg / max(1.0 - F_avg * Ems, vec3(1e-5));\n"
+               "  vec3 k_D = diffuse * (1.0 - FssEss - FmsEms);\n"
+               "  vec3 iblSpecular = FssEss * prefilteredSpecularColor;\n"
+               "  vec3 iblDiffuse = (FmsEms + k_D) * irradiance;\n";
+      }
+      else
+      {
+        oss << "  vec3 iblSpecular = vec3(0.0);\n"
+               "  vec3 iblDiffuse = vec3(0.0);\n";
+      }
+      oss << "  vec3 color = iblDiffuse + iblSpecular;\n"
+             "\n";
+
+      if (this->UseClearCoat)
+      {
+        oss
+          << "  // Clear coat attenuation\n"
              "  Fc = F_Schlick(coatF0, coatF90, coatNdV) * coatStrength;\n"
              "  iblSpecular *= (1.0 - Fc);\n"
              "  iblDiffuse *= (1.0 - Fc) * (1.0 - Fc);\n"
@@ -672,13 +711,15 @@ bool vtkGLSLModLight::ReplaceShaderValues(vtkOpenGLRenderer* renderer, std::stri
              "  color *= coatColorFactor;\n"
              "  color += iblSpecularClearCoat;\n"
              "\n";
+      }
+
+      oss << "  color += Lo;\n"
+             "  color = mix(color, color * ao, aoStrengthUniform);\n" // ambient occlusion
+             "  color += emissiveColor;\n"                            // emissive
+             "  gl_FragData[0] = vec4(color, opacity);\n";
     }
 
-    oss << "  color += Lo;\n"
-           "  color = mix(color, color * ao, aoStrengthUniform);\n" // ambient occlusion
-           "  color += emissiveColor;\n"                            // emissive
-           "  color = pow(color, vec3(1.0/2.2));\n"                 // to sRGB color space
-           "  gl_FragData[0] = vec4(color, opacity);\n"
+    oss << "  gl_FragData[0].rgb = pow(gl_FragData[0].rgb, vec3(1.0/2.2));\n"
            "  //VTK::Light::Impl";
 
     vtkShaderProgram::Substitute(fragmentShader, "//VTK::Light::Impl", oss.str(), false);
@@ -757,15 +798,32 @@ bool vtkGLSLModLight::SetShaderParameters(vtkOpenGLRenderer* renderer, vtkShader
   // apply vtkProperty attributes
   // FIXME: Follow a consistent naming convention for shader uniforms.
   vtkProperty* ppty = actor->GetProperty();
-  program->SetUniformf("intensity_opacity", ppty->GetOpacity());
-  program->SetUniformf("intensity_ambient", ppty->GetAmbient());
-  program->SetUniformf("intensity_diffuse", ppty->GetDiffuse());
-  program->SetUniformf("intensity_specular", ppty->GetSpecular());
-  program->SetUniform3f("color_ambient", ppty->GetAmbientColor());
-  program->SetUniform3f("color_diffuse", ppty->GetDiffuseColor());
-  program->SetUniform3f("color_specular", ppty->GetSpecularColor());
-  program->SetUniformi("enable_specular", ppty->GetLighting());
-  program->SetUniformf("power_specular", ppty->GetSpecularPower());
+  // Resolve the locations of the always-set property uniforms once per program
+  // link; thereafter the per-draw glUniform calls skip the name->location lookup.
+  if (this->CachedLocProgram != program || this->CachedLocLinkCount != program->GetLinkCount())
+  {
+    this->Loc.IntensityOpacity = program->FindUniform("intensity_opacity");
+    this->Loc.IntensityAmbient = program->FindUniform("intensity_ambient");
+    this->Loc.IntensityDiffuse = program->FindUniform("intensity_diffuse");
+    this->Loc.IntensitySpecular = program->FindUniform("intensity_specular");
+    this->Loc.ColorAmbient = program->FindUniform("color_ambient");
+    this->Loc.ColorDiffuse = program->FindUniform("color_diffuse");
+    this->Loc.ColorSpecular = program->FindUniform("color_specular");
+    this->Loc.EnableSpecular = program->FindUniform("enable_specular");
+    this->Loc.PowerSpecular = program->FindUniform("power_specular");
+    this->Loc.NormalScale = program->FindUniform("normalScaleUniform");
+    this->CachedLocProgram = program;
+    this->CachedLocLinkCount = program->GetLinkCount();
+  }
+  program->SetUniformf(this->Loc.IntensityOpacity, ppty->GetOpacity());
+  program->SetUniformf(this->Loc.IntensityAmbient, ppty->GetAmbient());
+  program->SetUniformf(this->Loc.IntensityDiffuse, ppty->GetDiffuse());
+  program->SetUniformf(this->Loc.IntensitySpecular, ppty->GetSpecular());
+  program->SetUniform3f(this->Loc.ColorAmbient, ppty->GetAmbientColor());
+  program->SetUniform3f(this->Loc.ColorDiffuse, ppty->GetDiffuseColor());
+  program->SetUniform3f(this->Loc.ColorSpecular, ppty->GetSpecularColor());
+  program->SetUniformi(this->Loc.EnableSpecular, ppty->GetLighting());
+  program->SetUniformf(this->Loc.PowerSpecular, ppty->GetSpecularPower());
   if (auto bfPpty = actor->GetBackfaceProperty())
   {
     program->SetUniformf("intensity_opacity_bf", bfPpty->GetOpacity());
@@ -822,7 +880,8 @@ bool vtkGLSLModLight::IsUpToDate(
   vtkOpenGLRenderer* renderer, vtkAbstractMapper* vtkNotUsed(mapper), vtkActor* actor)
 {
   auto stats = vtkGLSLModLight::GetBasicLightStats(renderer, actor);
-  if (this->LastLightComplexity != stats.Complexity || this->LastLightCount != stats.Count)
+  if (this->LastLightComplexity != stats.Complexity || this->LastLightCount != stats.Count ||
+    this->LastLightIBL != stats.IBL)
   {
     // lighting is not up to date.
     return false;

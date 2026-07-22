@@ -4,12 +4,13 @@
 #include "vtk_glad.h"
 
 #include "vtkObjectFactory.h"
+#include "vtkOpenGLArrayTextureBufferCache.h"
 #include "vtkOpenGLFramebufferObject.h"
 #include "vtkOpenGLRenderUtilities.h"
 #include "vtkOpenGLRenderWindow.h"
 #include "vtkOpenGLShaderCache.h"
+#include "vtkOpenGLTextureNormalizationHelper.h"
 #include "vtkOpenGLVertexBufferObjectCache.h"
-#include "vtkRenderer.h"
 #include "vtkTextureUnitManager.h"
 
 // must be included after a vtkObject subclass
@@ -1535,10 +1536,24 @@ void vtkOpenGLState::Pop()
 
 // make the hardware openglstate match the
 // state ivars
-void vtkOpenGLState::Initialize(vtkOpenGLRenderWindow*)
+void vtkOpenGLState::Initialize(vtkOpenGLRenderWindow* renWin)
 {
   this->TextureUnitManager->Initialize();
   this->InitializeTextureInternalFormats();
+#ifdef GL_ES_VERSION_3_0
+  if (!this->SupportsTextureNorm16)
+  {
+    auto helper = vtkOpenGLTextureNormalizationHelper::Create(renWin);
+    if (helper)
+    {
+      this->TextureNormalizationHelper = helper.GetPointer();
+      // Register so the object survives when the temporary smart pointer is destroyed
+      this->TextureNormalizationHelper->Register(this);
+    }
+  }
+#else
+  (void)renWin; // not needed for desktop OpenGL
+#endif
   auto& cs = this->Stack.top();
 
   cs.Blend ? ::glEnable(GL_BLEND) : ::glDisable(GL_BLEND);
@@ -1750,6 +1765,16 @@ void vtkOpenGLState::vtkglClear(GLbitfield val)
 void vtkOpenGLState::vtkglBlitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1, int dstX0,
   int dstY0, int dstX1, int dstY1, unsigned int mask, unsigned int filter)
 {
+  // Check framebuffer completeness before blitting to avoid GL_INVALID_FRAMEBUFFER_OPERATION
+  // Silently skip if framebuffers aren't ready (common during initialization)
+  GLenum readStatus = ::glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+  GLenum drawStatus = ::glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+  if (readStatus != GL_FRAMEBUFFER_COMPLETE || drawStatus != GL_FRAMEBUFFER_COMPLETE)
+  {
+    // Framebuffers not ready - skip blit to avoid GL errors
+    return;
+  }
+
   // ON APPLE MACOS you must turn off scissor test for DEPTH blits to work
   vtkOpenGLState::ScopedglEnableDisable stsaver(this, GL_SCISSOR_TEST);
   this->vtkglDisable(GL_SCISSOR_TEST);
@@ -1860,6 +1885,8 @@ void vtkOpenGLState::PrintSelf(ostream& os, vtkIndent indent)
 }
 
 vtkCxxSetObjectMacro(vtkOpenGLState, VBOCache, vtkOpenGLVertexBufferObjectCache);
+vtkCxxSetSmartPointerMacro(
+  vtkOpenGLState, ArrayTextureBufferCache, vtkOpenGLArrayTextureBufferCache);
 
 // initialize all state values. This is important so that in
 // ::Initialize we can just set the state to the current
@@ -1889,6 +1916,7 @@ vtkOpenGLState::vtkOpenGLState()
 {
   this->ShaderCache = vtkOpenGLShaderCache::New();
   this->VBOCache = vtkOpenGLVertexBufferObjectCache::New();
+  this->ArrayTextureBufferCache.TakeReference(vtkOpenGLArrayTextureBufferCache::New());
 
   this->TextureUnitManager = vtkTextureUnitManager::New();
 
@@ -1984,6 +2012,11 @@ vtkOpenGLState::~vtkOpenGLState()
   this->SetTextureUnitManager(nullptr);
   this->VBOCache->Delete();
   this->ShaderCache->Delete();
+  if (this->TextureNormalizationHelper)
+  {
+    this->TextureNormalizationHelper->UnRegister(this);
+    this->TextureNormalizationHelper = nullptr;
+  }
 }
 
 void vtkOpenGLState::PushDrawFramebufferBinding()
@@ -2030,6 +2063,11 @@ void vtkOpenGLState::PopReadFramebufferBinding()
     vtkGenericWarningMacro("Attempt to pop framebuffer beyond beginning of the stack.");
     abort();
   }
+}
+
+vtkSmartPointer<vtkOpenGLArrayTextureBufferCache> vtkOpenGLState::GetArrayTextureBufferCache()
+{
+  return this->ArrayTextureBufferCache;
 }
 
 int vtkOpenGLState::GetDefaultTextureInternalFormat(
@@ -2117,11 +2155,49 @@ void vtkOpenGLState::InitializeTextureInternalFormats()
   this->TextureInternalFormats[VTK_UNSIGNED_CHAR][0][4] = GL_RGBA;
 #endif
 
+#ifdef GL_ES_VERSION_3_0
+  // GL ES 3.0 core does not include GL_R16 normalized formats.
+  // Check for GL_EXT_texture_norm16 at runtime; if present we can use GL_R16
+  // with GL_UNSIGNED_SHORT data exactly as on desktop OpenGL.
+  // NOTE: glGetString(GL_EXTENSIONS) returns NULL on GLES 3.0+; use glGetStringi instead.
+  {
+    GLint numExts = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &numExts);
+    for (GLint i = 0; i < numExts; ++i)
+    {
+      const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
+      if (ext && strcmp(ext, "GL_EXT_texture_norm16") == 0)
+      {
+        this->SupportsTextureNorm16 = true;
+        // Use numeric values directly: GL_R16/GL_RG16/GL_RGB16/GL_RGBA16 are not
+        // defined in GLES3/gl3.h (e.g. Emscripten) even when the extension is present.
+        this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][1] = 0x822A; // GL_R16
+        this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][2] = 0x822C; // GL_RG16
+        this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][3] = 0x8054; // GL_RGB16
+        this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][4] = 0x805B; // GL_RGBA16
+        break;
+      }
+    }
+  }
+  // Without GL_EXT_texture_norm16, fall back to GL_R32F. Callers must convert
+  // VTK_UNSIGNED_SHORT source data to normalized GL_FLOAT before uploading.
+  if (!this->SupportsTextureNorm16)
+  {
+#ifdef GL_R32F
+    this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][1] = GL_R32F;
+    this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][2] = GL_RG32F;
+    this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][3] = GL_RGB32F;
+    this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][4] = GL_RGBA32F;
+#endif
+  }
+#else
 #ifdef GL_R16
+  this->SupportsTextureNorm16 = true;
   this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][1] = GL_R16;
   this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][2] = GL_RG16;
   this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][3] = GL_RGB16;
   this->TextureInternalFormats[VTK_UNSIGNED_SHORT][0][4] = GL_RGBA16;
+#endif
 #endif
 
 #ifdef GL_R8_SNORM
@@ -2131,11 +2207,32 @@ void vtkOpenGLState::InitializeTextureInternalFormats()
   this->TextureInternalFormats[VTK_SIGNED_CHAR][0][4] = GL_RGBA8_SNORM;
 #endif
 
+#ifdef GL_ES_VERSION_3_0
+  // GL_EXT_texture_norm16 also provides signed 16-bit normalized formats.
+  // GL_R16_SNORM_EXT is not defined in GLES3/gl3.h, so use hex values directly.
+  if (this->SupportsTextureNorm16)
+  {
+    this->TextureInternalFormats[VTK_SHORT][0][1] = 0x8F98; // GL_R16_SNORM
+    this->TextureInternalFormats[VTK_SHORT][0][2] = 0x8F99; // GL_RG16_SNORM
+    this->TextureInternalFormats[VTK_SHORT][0][3] = 0x8F9A; // GL_RGB16_SNORM
+    this->TextureInternalFormats[VTK_SHORT][0][4] = 0x8F9B; // GL_RGBA16_SNORM
+  }
+  else
+  {
+#ifdef GL_R32F
+    this->TextureInternalFormats[VTK_SHORT][0][1] = GL_R32F;
+    this->TextureInternalFormats[VTK_SHORT][0][2] = GL_RG32F;
+    this->TextureInternalFormats[VTK_SHORT][0][3] = GL_RGB32F;
+    this->TextureInternalFormats[VTK_SHORT][0][4] = GL_RGBA32F;
+#endif
+  }
+#else
 #ifdef GL_R16_SNORM
   this->TextureInternalFormats[VTK_SHORT][0][1] = GL_R16_SNORM;
   this->TextureInternalFormats[VTK_SHORT][0][2] = GL_RG16_SNORM;
   this->TextureInternalFormats[VTK_SHORT][0][3] = GL_RGB16_SNORM;
   this->TextureInternalFormats[VTK_SHORT][0][4] = GL_RGBA16_SNORM;
+#endif
 #endif
 
 #ifdef GL_R8I

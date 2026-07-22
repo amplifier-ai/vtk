@@ -11,6 +11,8 @@ vtk_add_test_cxx(vtkIOImageCxxTests tests
   TestDataObjectIO.cxx
   TestMetaIO.cxx
   TestImportExport.cxx
+  TestHDRReaderInvalidFileHandling.cxx
+  TestBMPReaderInvalidFileHandling.cxx
   )
 
 # Each of these must be added in a separate vtk_add_test_cxx
@@ -114,8 +116,17 @@ vtk_add_test_cxx(vtkIOImageCxxTests tests
     "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/vtk.tga}")
 
 vtk_add_test_cxx(vtkIOImageCxxTests tests
-  TestPNGReaderReadFromMemory.cxx,NO_OUTPUT
-    "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/vtk.png}")
+    TestTGAReaderInvalidFileHandling.cxx,NO_VALID,NO_OUTPUT
+    "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/vtk.tga}")
+
+# autzen.zip from PDAL Copyright (c) 2025, Hobu, Inc.
+vtk_add_test_cxx(vtkIOImageCxxTests tests
+  TestTGACanReadFileError.cxx,NO_VALID,NO_OUTPUT
+    "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/autzen.zip}")
+
+vtk_add_test_cxx(vtkIOImageCxxTests tests
+  TestTGAReaderStrictValidation.cxx,NO_VALID,NO_OUTPUT
+    "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/vtk.tga}")
 
 vtk_add_test_cxx(vtkIOImageCxxTests tests
   TestPNGReaderReadFromStream.cxx,NO_OUTPUT

@@ -340,7 +340,7 @@ public:
     lhs = newVal;                                                                                  \
     return lhs;                                                                                    \
   }                                                                                                \
-  friend VTK_ITER_INLINE APIType& operator Op(APIType& lhs, ComponentReference val) noexcept       \
+  friend VTK_ITER_INLINE APIType& operator Op(APIType & lhs, ComponentReference val) noexcept      \
   {                                                                                                \
     const APIType newVal = lhs ImplOp val;                                                         \
     lhs = newVal;                                                                                  \
@@ -351,6 +351,9 @@ public:
   VTK_REF_OP_OVERLOADS(-=, -)
   VTK_REF_OP_OVERLOADS(*=, *)
   VTK_REF_OP_OVERLOADS(/=, /)
+  VTK_REF_OP_OVERLOADS(|=, |)
+  VTK_REF_OP_OVERLOADS(&=, &)
+  VTK_REF_OP_OVERLOADS(^=, ^)
 
 #undef VTK_REF_OP_OVERLOADS
 
@@ -1759,6 +1762,10 @@ public:
     assert(this->Array);
     assert(beginTuple >= 0 && beginTuple <= endTuple);
     assert(endTuple >= 0 && endTuple <= this->Array->GetNumberOfTuples());
+    if constexpr (IsStaticTupleSize<TupleSize>::value)
+    {
+      assert(arr->GetNumberOfComponents() == TupleSize);
+    }
   }
 
   VTK_ITER_INLINE

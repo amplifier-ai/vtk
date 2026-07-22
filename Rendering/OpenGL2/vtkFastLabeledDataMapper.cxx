@@ -1,5 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
 // SPDX-License-Identifier: BSD-3-Clause
+// Hide VTK_DEPRECATED_IN_9_7_0() warnings for this class.
+#define VTK_DEPRECATION_LEVEL 0
 
 #include "vtkFastLabeledDataMapper.h"
 
@@ -121,11 +123,11 @@ public:
   {
     this->InputPlusArrays->Initialize();
     this->InputPlusArrays->Allocate();
-    this->GlyphExtents->SetNumberOfTuples(0);
-    this->Coff->SetNumberOfTuples(0);
-    this->PId->SetNumberOfTuples(0);
-    this->PropId->SetNumberOfTuples(0);
-    this->Framecolors->SetNumberOfTuples(0);
+    this->GlyphExtents->Initialize();
+    this->Coff->Initialize();
+    this->PId->Initialize();
+    this->PropId->Initialize();
+    this->Framecolors->Initialize();
   }
 
   //----------------------------------------------------------------------------
@@ -470,7 +472,7 @@ void vtkFastLabeledDataMapper::SetLabelFormat(const char* formatArg)
 {
   std::string format = formatArg ? vtk::to_std_format(formatArg) : "";
   const char* formatStr = format.c_str();
-  vtkSetStringBodyMacro(LabelFormat, formatStr);
+  vtkSetStringBodyMacro(LabelFormat, formatStr)
 }
 
 //----------------------------------------------------------------------------
@@ -1059,8 +1061,9 @@ struct vtkFastLabeledDataMapper::vtkFastLabeledDataMapperFunctor
     char formatedString[1024];
     for (int i = 0; i < this->NumCurLabels; i++)
     {
-      auto result = vtk::format_to_n(formatedString, sizeof(formatedString), FormatString, i);
-      *result.out = '\0';
+      VTK_FORMAT_IF_ERROR_RETURN(auto result = vtk::format_to_n(formatedString,
+                                   sizeof(formatedString), vtk::runtime(FormatString), i);
+                                 *result.out = '\0', );
       this->SetFormattedString(i, formatedString);
     }
   }
@@ -1076,9 +1079,10 @@ struct vtkFastLabeledDataMapper::vtkFastLabeledDataMapperFunctor
     using ValueType = vtk::GetAPIType<TArray>;
     for (int i = 0; i < this->NumCurLabels; i++)
     {
-      auto result = vtk::format_to_n(formatedString, sizeof(formatedString), FormatString,
-        static_cast<ValueType>(a[i][activeComp]));
-      *result.out = '\0';
+      VTK_FORMAT_IF_ERROR_RETURN(
+        auto result = vtk::format_to_n(formatedString, sizeof(formatedString),
+          vtk::runtime(FormatString), static_cast<ValueType>(a[i][activeComp]));
+        *result.out = '\0', );
       this->SetFormattedString(i, formatedString);
     }
   }
@@ -1100,9 +1104,10 @@ struct vtkFastLabeledDataMapper::vtkFastLabeledDataMapperFunctor
       // Print each component in turn and add it to the string.
       for (int j = 0; j < numComp; ++j)
       {
-        auto result = vtk::format_to_n(
-          formatedString, sizeof(formatedString), FormatString, static_cast<ValueType>(a[i][j]));
-        *result.out = '\0';
+        VTK_FORMAT_IF_ERROR_RETURN(
+          auto result = vtk::format_to_n(formatedString, sizeof(formatedString),
+            vtk::runtime(FormatString), static_cast<ValueType>(a[i][j]));
+          *result.out = '\0', );
 
         ResultString += formatedString;
         if (j < (numComp - 1))
@@ -1130,9 +1135,10 @@ struct vtkFastLabeledDataMapper::vtkFastLabeledDataMapperFunctor
       }
       else // the user specified a label format
       {
-        auto result = vtk::format_to_n(formatedString, sizeof(formatedString), FormatString,
-          static_cast<std::string&>(array->GetValue(i)));
-        *result.out = '\0';
+        VTK_FORMAT_IF_ERROR_RETURN(
+          auto result = vtk::format_to_n(formatedString, sizeof(formatedString),
+            vtk::runtime(FormatString), static_cast<std::string&>(array->GetValue(i)));
+          *result.out = '\0', );
         this->SetFormattedString(i, formatedString);
       }
     }
@@ -1167,7 +1173,7 @@ void vtkFastLabeledDataMapper::BuildLabelsInternal(vtkDataSet* input)
     case VTK_LABEL_IDS:
     {
       pointIdLabels = 1;
-    };
+    }
     break;
     case VTK_LABEL_SCALARS:
       if (pd->GetScalars())
@@ -1215,7 +1221,7 @@ void vtkFastLabeledDataMapper::BuildLabelsInternal(vtkDataSet* input)
       }
       numericData = vtkArrayDownCast<vtkDataArray>(abstractData);
       stringData = vtkArrayDownCast<vtkStringArray>(abstractData);
-    };
+    }
     break;
   }
 

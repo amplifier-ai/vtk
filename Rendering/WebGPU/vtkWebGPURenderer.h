@@ -30,12 +30,6 @@ public:
   vtkTypeMacro(vtkWebGPURenderer, vtkRenderer);
   void PrintSelf(ostream& os, vtkIndent indent) override;
 
-  struct RenderPipelineBatch
-  {
-    vtkSmartPointer<vtkPropCollection> Props;
-    wgpu::RenderPipeline Pipeline;
-  };
-
   // get the complexity of the current lights as a int
   // 0 = no lighting
   // 1 = headlight
@@ -114,11 +108,11 @@ public:
 
   void ReleaseGraphicsResources(vtkWindow* w) override;
 
-  inline wgpu::RenderPassEncoder GetRenderPassEncoder() { return this->WGPURenderEncoder; }
-  inline wgpu::RenderBundleEncoder GetRenderBundleEncoder() { return this->WGPUBundleEncoder; }
-  inline wgpu::BindGroup GetSceneBindGroup() { return this->SceneBindGroup; }
+  wgpu::RenderPassEncoder GetRenderPassEncoder() { return this->WGPURenderEncoder; }
+  wgpu::RenderBundleEncoder GetRenderBundleEncoder() { return this->WGPUBundleEncoder; }
+  wgpu::BindGroup GetSceneBindGroup() { return this->SceneBindGroup; }
 
-  inline void PopulateBindgroupLayouts(std::vector<wgpu::BindGroupLayout>& layouts)
+  void PopulateBindgroupLayouts(std::vector<wgpu::BindGroupLayout>& layouts)
   {
     layouts.emplace_back(this->SceneBindGroupLayout);
   }
@@ -148,10 +142,9 @@ public:
 
   ///@{
   /**
-   * Set the usage of render bundles. This speeds up rendering in wasm.
-   * Render bundles are a performance optimization that minimize CPU time for rendering large number
-   * of props.
-   * @warning LEAKS MEMORY. See vtkWebGPURenderer::DeviceRender
+   * Set/Get the usage of render bundles. The default value is true.
+   * Render bundles are a performance optimization that minimize CPU time when many
+   * wgpu::RenderPassEncoder::Draw calls are used.
    */
   vtkSetMacro(UseRenderBundles, bool);
   vtkBooleanMacro(UseRenderBundles, bool);
@@ -174,8 +167,26 @@ public:
    *
    * @note This does not use vtkSetMacro because the actor MTime should not be affected when a
    * render bundle is invalidated.
+   *
+   * @note This method is invoked under different circumstances when the render bundle needs to be
+   * invalidated and re-recorded.
+   * 1. When the mapper deems that the draw commands need to be re-recorded.
+   * 2. When the set of visible props has changed since last frame. This is checked in
+   * UpdateBuffers() by comparing the list of props rendered last frame with the current list of
+   * props to render.
+   *
+   * It is tempting to only check if PropArrayCount has changed, but that is insufficient.
+   * | Scenario | Count-only check | Prop array comparison |
+   * |----------|------------------|----------------------|
+   * | Actor hidden (count decreases) | Catches it | Catches it |
+   * | Actor shown (count increases) | Catches it | Catches it |
+   * | Actor A hidden + Actor B shown (count unchanged) | Misses it | Catches it |
+   * | Props reordered | Misses it | Can miss it (implementation defined) |
+   *
+   * Translucent geometry is not implemented properly yet, so for the last case
+   * it's fine to use the bundle as is when dealing with opaque geometry.
    */
-  inline void InvalidateBundle()
+  void InvalidateBundle()
   {
     this->RebuildRenderBundle = true;
     this->Bundle = nullptr;
@@ -199,6 +210,16 @@ protected:
   int UpdateOpaquePolygonalGeometry() override;
   int UpdateTranslucentPolygonalGeometry() override;
 
+private:
+  friend class vtkWebGPUComputeOcclusionCuller;
+  // For the mapper to access 'AddPostRasterizationActor'
+  friend class vtkWebGPUComputePointCloudMapper;
+  // For render window accessing PostRenderComputePipelines()
+  friend class vtkWebGPURenderWindow;
+
+  vtkWebGPURenderer(const vtkWebGPURenderer&) = delete;
+  void operator=(const vtkWebGPURenderer&) = delete;
+
   // Setup scene and actor bindgroups. Actor has dynamic offsets.
   void SetupBindGroupLayouts();
   // Create buffers for the bind groups.
@@ -212,45 +233,6 @@ protected:
 
   std::size_t WriteLightsBuffer(std::size_t offset = 0);
   std::size_t WriteSceneTransformsBuffer(std::size_t offset = 0);
-
-  wgpu::RenderPassEncoder WGPURenderEncoder;
-  wgpu::RenderBundleEncoder WGPUBundleEncoder;
-  wgpu::Buffer SceneTransformBuffer;
-  wgpu::Buffer SceneLightsBuffer;
-
-  wgpu::BindGroup SceneBindGroup;
-  wgpu::BindGroupLayout SceneBindGroupLayout;
-
-#ifdef __EMSCRIPTEN__
-  bool UseRenderBundles = true;
-#else
-  bool UseRenderBundles = false;
-#endif
-  bool RebuildRenderBundle = false;
-  // the commands in bundle get reused every frame.
-  wgpu::RenderBundle Bundle;
-
-  int LightingComplexity = 0;
-  std::size_t NumberOfLightsUsed = 0;
-  std::vector<std::size_t> LightIDs;
-
-  vtkMTimeType LightingUpdateTime;
-  vtkTimeStamp LightingUploadTimestamp;
-
-  /**
-   * Optional user transform for lights
-   */
-  vtkSmartPointer<vtkTransform> UserLightTransform;
-
-private:
-  friend class vtkWebGPUComputeOcclusionCuller;
-  // For the mapper to access 'AddPostRasterizationActor'
-  friend class vtkWebGPUComputePointCloudMapper;
-  // For render window accessing PostRenderComputePipelines()
-  friend class vtkWebGPURenderWindow;
-
-  vtkWebGPURenderer(const vtkWebGPURenderer&) = delete;
-  void operator=(const vtkWebGPURenderer&) = delete;
 
   /**
    * Sets the device and adapter of the render window of this renderer to the given pipeline
@@ -319,6 +301,34 @@ private:
    * and commands which render all the props contained in this renderer.
    */
   void RecordRenderCommands();
+
+  wgpu::RenderPassEncoder WGPURenderEncoder;
+  wgpu::RenderBundleEncoder WGPUBundleEncoder;
+  wgpu::Buffer SceneTransformBuffer;
+  wgpu::Buffer SceneLightsBuffer;
+
+  wgpu::BindGroup SceneBindGroup;
+  wgpu::BindGroupLayout SceneBindGroupLayout;
+
+  // Render bundles enable faster rendering.
+  bool UseRenderBundles = true;
+  bool RebuildRenderBundle = false;
+  // the commands in bundle get reused every frame.
+  wgpu::RenderBundle Bundle;
+
+  int LightingComplexity = 0;
+  std::size_t NumberOfLightsUsed = 0;
+  std::vector<std::size_t> LightIDs;
+  std::size_t AllocatedLightsBufferSize = 0;
+  std::size_t PreviousLightCount = 0;
+
+  vtkMTimeType LightingUpdateTime;
+  vtkTimeStamp LightingUploadTimestamp;
+
+  /**
+   * Optional user transform for lights
+   */
+  vtkSmartPointer<vtkTransform> UserLightTransform;
 
   /**
    * Whether the compute render buffers of the mappers of the actors of this renderer have already

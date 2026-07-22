@@ -189,20 +189,27 @@ void vtkMPIController::Finalize(int finalizedExternally)
 // during construction).
 void vtkMPIController::InitializeCommunicator(vtkMPICommunicator* comm)
 {
-  if (this->Communicator != comm)
+  if (this->Communicator == comm)
   {
-    if (this->Communicator != nullptr)
-    {
-      this->Communicator->UnRegister(this);
-    }
-    this->Communicator = comm;
-    if (this->Communicator != nullptr)
-    {
-      this->Communicator->Register(this);
-    }
-
-    this->Modified();
+    return;
   }
+
+  if (this->Communicator != nullptr)
+  {
+    this->Communicator->UnRegister(this);
+  }
+
+  this->Communicator = comm;
+
+  if (comm == nullptr)
+  {
+    return;
+  }
+
+  this->Communicator->Register(this);
+  comm->InitializeAttributes();
+
+  this->Modified();
 }
 
 // Delete the previous RMI communicator and creates a new one
@@ -347,7 +354,7 @@ int vtkMPIController::WaitSome(
   int N = 0;
   int rc = myMPICommunicator->WaitSome(count, rqsts, N, completed->GetPointer(0));
   assert("post: Number of completed requests must N > 0" && (N > 0) && (N < (count - 1)));
-  completed->Resize(N);
+  completed->SetNumberOfTuples(N);
 
   return (rc);
 }
@@ -395,12 +402,12 @@ bool vtkMPIController::TestSome(
 
   if (N > 0)
   {
-    completed->Resize(N);
+    completed->ReserveTuples(N);
     return true;
   }
   else
   {
-    completed->Resize(0);
+    completed->Initialize();
     return false;
   }
 }

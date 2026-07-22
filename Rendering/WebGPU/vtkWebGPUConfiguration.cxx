@@ -14,7 +14,9 @@
 #include "vtksys/SystemInformation.hxx"
 #include "vtksys/SystemTools.hxx"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <sstream>
 
 #ifdef __EMSCRIPTEN__
@@ -340,13 +342,18 @@ void PrintAdapter(ostream& os, vtkIndent indent, const wgpu::Adapter& adapter)
 class DawnMemoryDump : public dawn::native::MemoryDump
 {
 public:
+  static constexpr const char* NameSize = "size";
+  static constexpr const char* NameObjectCount = "object_count";
+  static constexpr const char* UnitsBytes = "bytes";
+  static constexpr const char* UnitsObjects = "objects";
+
   void AddScalar(const char* name, const char* key, const char* units, uint64_t value) override
   {
-    if (key == MemoryDump::kNameSize && units == MemoryDump::kUnitsBytes)
+    if (std::strcmp(key, NameSize) == 0 && std::strcmp(units, UnitsBytes) == 0)
     {
       TotalSize += value;
     }
-    else if (key == MemoryDump::kNameObjectCount && units == MemoryDump::kUnitsObjects)
+    else if (std::strcmp(key, NameObjectCount) == 0 && std::strcmp(units, UnitsObjects) == 0)
     {
       TotalObjects += value;
     }
@@ -490,6 +497,7 @@ bool vtkWebGPUConfiguration::Initialize()
     return true;
   }
   vtkWebGPUConfigurationInternals::AddInstanceRef();
+  this->InstanceRefHeld = true;
 
   wgpu::RequestAdapterOptions adapterOptions = {};
   adapterOptions.backendType = internals.ToWGPUBackendType(this->Backend);
@@ -610,7 +618,7 @@ bool vtkWebGPUConfiguration::Initialize()
 }
 
 //------------------------------------------------------------------------------
-void vtkWebGPUConfiguration::Finalize()
+void vtkWebGPUConfiguration::FinalizeDevice()
 {
   auto& internals = (*this->Internals);
   if (!internals.DeviceReady)
@@ -620,7 +628,19 @@ void vtkWebGPUConfiguration::Finalize()
   internals.Adapter = nullptr;
   internals.Device = nullptr;
   internals.DeviceReady = false;
-  vtkWebGPUConfigurationInternals::ReleaseInstanceRef();
+  // Deliberately does NOT call ReleaseInstanceRef() so the Vulkan instance
+  // stays alive (keeping GLX libraries loaded) until Finalize() is called.
+}
+
+//------------------------------------------------------------------------------
+void vtkWebGPUConfiguration::Finalize()
+{
+  this->FinalizeDevice();
+  if (this->InstanceRefHeld)
+  {
+    this->InstanceRefHeld = false;
+    vtkWebGPUConfigurationInternals::ReleaseInstanceRef();
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -813,7 +833,7 @@ bool vtkWebGPUConfiguration::IsSamsungGPUInUse()
 }
 
 //------------------------------------------------------------------------------
-wgpu::Buffer vtkWebGPUConfiguration::CreateBuffer(unsigned long sizeBytes, wgpu::BufferUsage usage,
+wgpu::Buffer vtkWebGPUConfiguration::CreateBuffer(std::uint64_t sizeBytes, wgpu::BufferUsage usage,
   bool mappedAtCreation /*=false*/, const char* label /*=nullptr*/)
 {
   auto& internals = (*this->Internals);
@@ -859,8 +879,8 @@ wgpu::Buffer vtkWebGPUConfiguration::CreateBuffer(const wgpu::BufferDescriptor& 
 }
 
 //------------------------------------------------------------------------------
-void vtkWebGPUConfiguration::WriteBuffer(const wgpu::Buffer& buffer, unsigned long offset,
-  const void* data, unsigned long sizeBytes, const char* description /*= nullptr*/)
+void vtkWebGPUConfiguration::WriteBuffer(const wgpu::Buffer& buffer, std::uint64_t offset,
+  const void* data, std::size_t sizeBytes, const char* description /*= nullptr*/)
 {
   auto& internals = (*this->Internals);
   if (!internals.DeviceReady)
@@ -962,8 +982,13 @@ void vtkWebGPUConfiguration::WriteTexture(wgpu::Texture texture, uint32_t bytesP
   const auto textureDataLayout =
     vtkWebGPUTextureInternals::GetDataLayout(texture, bytesPerRow, srcOffset);
 
-  wgpu::Extent3D textureExtents = { texture.GetWidth(), texture.GetHeight(),
-    texture.GetDepthOrArrayLayers() };
+  // Compute the number of layers to copy from the data size rather than the full texture depth.
+  // This ensures individual array layer writes (e.g. cube map faces) copy only 1 layer.
+  const uint32_t rowsPerImage = texture.GetHeight();
+  const uint32_t layerSizeBytes = bytesPerRow * rowsPerImage;
+  const uint32_t depthOrArrayLayers =
+    layerSizeBytes > 0 ? std::max(1u, sizeBytes / layerSizeBytes) : 1;
+  wgpu::Extent3D textureExtents = { texture.GetWidth(), texture.GetHeight(), depthOrArrayLayers };
   vtkVLog(this->GetGPUMemoryLogVerbosity(),
     "Write texture {description: \"" << (description ? description : "null")
                                      << "\", size: " << sizeBytes << "}");

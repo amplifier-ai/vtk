@@ -151,10 +151,14 @@ typedef struct vtkSessionDescriptor
 #define vtkSessionSetSize VTK_ABI_NAMESPACE_MANGLE(vtkSessionSetSize)
 #define vtkSessionRender VTK_ABI_NAMESPACE_MANGLE(vtkSessionRender)
 #define vtkSessionResetCamera VTK_ABI_NAMESPACE_MANGLE(vtkSessionResetCamera)
+#define vtkSessionStartWebXR VTK_ABI_NAMESPACE_MANGLE(vtkSessionStartWebXR)
+#define vtkSessionStopWebXR VTK_ABI_NAMESPACE_MANGLE(vtkSessionStopWebXR)
 #define vtkSessionStartEventLoop VTK_ABI_NAMESPACE_MANGLE(vtkSessionStartEventLoop)
 #define vtkSessionStopEventLoop VTK_ABI_NAMESPACE_MANGLE(vtkSessionStopEventLoop)
 #define vtkSessionAddObserver VTK_ABI_NAMESPACE_MANGLE(vtkSessionAddObserver)
 #define vtkSessionRemoveObserver VTK_ABI_NAMESPACE_MANGLE(vtkSessionRemoveObserver)
+#define vtkSessionRemoveAllObservers VTK_ABI_NAMESPACE_MANGLE(vtkSessionRemoveAllObservers)
+#define vtkSessionRemoveAllObserversFromAllObjects VTK_ABI_NAMESPACE_MANGLE(vtkSessionRemoveAllObserversFromAllObjects)
 #define vtkSessionImport VTK_ABI_NAMESPACE_MANGLE(vtkSessionImport)
 #define vtkSessionExport VTK_ABI_NAMESPACE_MANGLE(vtkSessionExport)
 #define vtkSessionPrintObjectToString VTK_ABI_NAMESPACE_MANGLE(vtkSessionPrintObjectToString)
@@ -451,6 +455,28 @@ extern "C"
     vtkSession session, vtkObjectHandle object);
 
   /**
+   * Start the WebXR session
+   * @param mode The session mode. 0 for inline, 1 for VR or 2 for AR
+   * @param requiredFeatures Bitflags of WebXR features to request. If at least one feature is not
+   * available, the session will fail. Values are: Local: 1 Local floor: 2 Bounded floor: 4
+   * Unbounded: 8
+   * Hit test: 16
+   * @param optionalFeatures same as requiredFeatures, but will not fail if some features are not
+   * available.
+   * @return A vtkSessionResult indicating success or failure.
+   * @note This will fail if VTK was not compiled with the RenderingWebXR module
+   */
+  VTKSERIALIZATIONMANAGER_EXPORT vtkSessionResult vtkSessionStartWebXR(
+    uint8_t mode, uint32_t requiredFeatures, uint32_t optionalFeatures);
+
+  /**
+   * Stop the WebXR session
+   * @return A vtkSessionResult indicating success or failure.
+   * @note This will fail if VTK was not compiled with the RenderingWebXR module
+   */
+  VTKSERIALIZATIONMANAGER_EXPORT vtkSessionResult vtkSessionStopWebXR();
+
+  /**
    * Start the event loop for the render window interactor.
    * @param session The session to start the event loop in. The session must be created using
    * vtkCreateSession.
@@ -511,6 +537,28 @@ extern "C"
    */
   VTKSERIALIZATIONMANAGER_EXPORT vtkSessionResult vtkSessionRemoveObserver(
     vtkSession session, vtkObjectHandle object, unsigned long tag);
+
+  /**
+   * Remove all observers from the given object in the session. This method only removes observers
+   * added through the vtkSessionAddObserver method.
+   * @param session The session to remove the observer from. The session must be created using
+   * vtkCreateSession.
+   * @param object The object to remove the observers from. The object must be registered using
+   * vtkSessionRegisterState or vtkSessionCreateObject or a dependent of objects created
+   * through either of those two methods.
+   * @return A vtkSessionResult indicating success or failure.
+   */
+  VTKSERIALIZATIONMANAGER_EXPORT vtkSessionResult vtkSessionRemoveAllObservers(
+    vtkSession session, vtkObjectHandle object);
+
+  /**
+   * Remove all observers from all objects in the session. This method only removes observers
+   * added through the vtkSessionAddObserver method.
+   * @param session The session to remove the observers from. The session must be created using
+   * vtkCreateSession.
+   */
+  VTKSERIALIZATIONMANAGER_EXPORT void vtkSessionRemoveAllObserversFromAllObjects(
+    vtkSession session);
 
   /**
    * Writes state of all registered objects to `fileName.states.json`

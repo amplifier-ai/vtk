@@ -64,11 +64,15 @@ struct PyVTKGetSet
 {
   PyCFunction get;
   PyCFunction set;
+  PyCFunction add;          // for Add/RemoveAll sequence properties
+  const char* propertyName; // "Representation" for enums, nullptr otherwise
+  const char** enumNames;   // {"Points", "Wireframe", "Surface", nullptr} or nullptr
 };
 VTK_ABI_NAMESPACE_END
 
 extern VTKWRAPPINGPYTHONCORE_EXPORT PyGetSetDef PyVTKObject_GetSet[];
 extern VTKWRAPPINGPYTHONCORE_EXPORT PyBufferProcs PyVTKObject_AsBuffer;
+extern VTKWRAPPINGPYTHONCORE_EXPORT PySequenceMethods PyVTKObject_AsSequence;
 
 extern "C"
 {
@@ -123,6 +127,12 @@ extern "C"
 
   VTKWRAPPINGPYTHONCORE_EXPORT
   int PyVTKObject_SetPropertyMulti(PyObject* op, PyObject* value, void* methods);
+
+  VTKWRAPPINGPYTHONCORE_EXPORT
+  int PyVTKObject_SetPropertySequence(PyObject* op, PyObject* value, void* methods);
+
+  VTKWRAPPINGPYTHONCORE_EXPORT
+  int PyVTKObject_SetPropertyEnum(PyObject* op, PyObject* value, void* methods);
 }
 
 #endif

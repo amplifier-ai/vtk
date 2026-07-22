@@ -221,7 +221,7 @@ void vtkVoronoiHull::BumpNormal(int bumpNum, double normal[3], double bumpNormal
     this->Bumper.Seed(this->PtId);
   }
 
-  // Use small angle approximation (recal |normal| == 1).
+  // Use small angle approximation (recall |normal| == 1).
   double theta = 1e-6 * vtkMath::Pi() / 180.0;
   vtkVoronoiJoggle::JoggleNormal(normal, bumpNormal, theta, this->Bumper);
 }
@@ -292,7 +292,6 @@ ClipIntersectionStatus vtkVoronoiHull::IntersectWithPlane(
       // Points inside the clip are kept.
       if (val < -tol)
       {
-        ;
       }
       // If a point is outside the clip, it will be discarded. The faces
       // attached to the point require further processing.
@@ -387,7 +386,7 @@ ClipIntersectionStatus vtkVoronoiHull::IntersectWithPlane(
       // Assign loop index
       this->InsertedEdgePoints[i].LoopIdx = idx;
     } // for all non-origin points forming the capping polygon.
-  }   // more than 3 points in the face
+  } // more than 3 points in the face
 
   // Finally, create a new face (the capping polygon) with the points
   // inserted in the correct order (using the loop index).

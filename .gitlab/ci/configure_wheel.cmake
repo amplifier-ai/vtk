@@ -63,6 +63,7 @@ set(VTK_MODULE_ENABLE_VTK_IOFFMPEG NO CACHE STRING "") # FFMPEG
 set(VTK_MODULE_ENABLE_VTK_IOGDAL NO CACHE STRING "") # GDAL
 set(VTK_MODULE_ENABLE_VTK_IOLAS NO CACHE STRING "") # liblas
 set(VTK_MODULE_ENABLE_VTK_IOMySQL NO CACHE STRING "") # MariaDB
+set(VTK_MODULE_ENABLE_VTK_IONanoVDB NO CACHE STRING "") # NanoVDB
 set(VTK_MODULE_ENABLE_VTK_IOODBC NO CACHE STRING "") # odbc
 set(VTK_MODULE_ENABLE_VTK_IOOpenVDB NO CACHE STRING "") # OpenVDB
 set(VTK_MODULE_ENABLE_VTK_IOPDAL NO CACHE STRING "") # PDAL
@@ -71,6 +72,7 @@ set(VTK_MODULE_ENABLE_VTK_InfovisBoost NO CACHE STRING "") # Boost
 set(VTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms NO CACHE STRING "") # Boost
 set(VTK_MODULE_ENABLE_VTK_RenderingFreeTypeFontConfig NO CACHE STRING "") # fontconfig
 set(VTK_MODULE_ENABLE_VTK_RenderingOpenVR NO CACHE STRING "") # OpenVR
+set(VTK_MODULE_ENABLE_VTK_conduit NO CACHE STRING "") # conduit
 
 # PCH causes issues on macOS CI due to issues from sccache.
 # sccache issue: https://github.com/mozilla/sccache/issues/2558
@@ -81,7 +83,6 @@ if(NOT WIN32)
   set(VTK_MODULE_ENABLE_VTK_RenderingOpenXR NO CACHE STRING "") # OpenXR disable on every system except Windows
 endif()
 
-set(VTK_MODULE_ENABLE_VTK_RenderingRayTracing NO CACHE STRING "") # OSPRay
 set(VTK_MODULE_ENABLE_VTK_RenderingZSpace NO CACHE STRING "") # zSpace
 set(VTK_MODULE_ENABLE_VTK_fides NO CACHE STRING "") # ADIOS2
 set(VTK_MODULE_ENABLE_VTK_xdmf3 NO CACHE STRING "") # Boost

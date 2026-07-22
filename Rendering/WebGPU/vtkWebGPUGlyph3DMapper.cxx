@@ -18,6 +18,7 @@
 #include "vtkPolyDataMapper.h"
 #include "vtkQuaternion.h"
 #include "vtkRenderer.h"
+#include "vtkTimeStamp.h"
 #include "vtkWebGPUActor.h"
 #include "vtkWebGPUCellToPrimitiveConverter.h"
 #include "vtkWebGPUPolyDataMapper.h"
@@ -89,6 +90,15 @@ public:
     {
       case vtkWebGPURenderer::RenderStageEnum::SyncDeviceResources:
         this->UpdateInstanceAttributeBuffers(wgpuConfiguration);
+        // Invalidate the render bundle when glyph structures have been rebuilt.
+        // This is needed because the bundle encodes draw calls with instance counts
+        // that may have changed. Buffer size alignment can mask small changes in
+        // NumberOfGlyphPoints, so we use the build timestamp for a robust check.
+        if (this->GlyphStructuresBuildTime > this->LastBundleGlyphBuildTime)
+        {
+          wgpuRenderer->InvalidateBundle();
+          this->LastBundleGlyphBuildTime = this->GlyphStructuresBuildTime;
+        }
         break;
       default:
         break;
@@ -147,7 +157,7 @@ public:
   }
 
   /**
-   * Overriden to pass instance attribtue buffers into the vertex buffer slots.
+   * Overridden to pass instance attribtue buffers into the vertex buffer slots.
    */
   void SetVertexBuffers(const wgpu::RenderPassEncoder& encoder) override
   {
@@ -160,7 +170,7 @@ public:
   }
 
   /**
-   * Overriden to pass instance attribtue buffers into the vertex buffer slots.
+   * Overridden to pass instance attribtue buffers into the vertex buffer slots.
    */
   void SetVertexBuffers(const wgpu::RenderBundleEncoder& encoder) override
   {
@@ -188,6 +198,7 @@ public:
     }
     this->InstancePropertiesBuffer = nullptr;
     this->RebuildGraphicsPipelines = true;
+    this->LastBundleGlyphBuildTime = vtkTimeStamp();
     this->Superclass::ReleaseGraphicsResources(window);
   }
 
@@ -341,6 +352,7 @@ protected:
   bool Pickable = false;
   bool PickingAttributesModified = false;
   vtkMTimeType GlyphStructuresBuildTime = 0;
+  vtkMTimeType LastBundleGlyphBuildTime = 0;
 
   /**
    * Order in which the instance data attributes are concatenated into the mapper mesh SSBO
@@ -843,8 +855,9 @@ const TRIANGLE_VERTS = array(
         if (pipelineType == GFX_PIPELINE_POINTS ||
           pipelineType == GFX_PIPELINE_POINTS_HOMOGENEOUS_CELL_SIZE)
         {
-          return { /*vertexCount=*/bgInfo.VertexCount,
-            /*instanceCount=*/this->NumberOfGlyphPoints };
+          return { /*VertexOffset=*/0, /*VertexCount=*/bgInfo.VertexCount,
+            /*InstanceOffset=*/0,
+            /*InstanceCount=*/this->NumberOfGlyphPoints };
         }
         if (pipelineType == GFX_PIPELINE_POINTS_SHAPED ||
           pipelineType == GFX_PIPELINE_POINTS_SHAPED_HOMOGENEOUS_CELL_SIZE)
@@ -852,8 +865,8 @@ const TRIANGLE_VERTS = array(
           // ReplaceShaderConstantsDef declares a quad with two triangles
           // when pipeline is specialized for shaped points.
           // total 6 imposter vertices
-          return { /*vertexCount=*/6 * bgInfo.VertexCount,
-            /*instanceCount=*/this->NumberOfGlyphPoints };
+          return { /*VertexOffset=*/0, /*VertexCount=*/6 * bgInfo.VertexCount,
+            /*InstanceOffset=*/0, /*InstanceCount=*/this->NumberOfGlyphPoints };
         }
         break;
       case vtkWebGPUCellToPrimitiveConverter::TOPOLOGY_SOURCE_LINES:
@@ -861,8 +874,8 @@ const TRIANGLE_VERTS = array(
         if (pipelineType == GFX_PIPELINE_LINES ||
           pipelineType == GFX_PIPELINE_LINES_HOMOGENEOUS_CELL_SIZE)
         {
-          return { /*vertexCount=*/bgInfo.VertexCount,
-            /*instanceCount=*/this->NumberOfGlyphPoints };
+          return { /*VertexOffset=*/0, /*VertexCount=*/bgInfo.VertexCount,
+            /*InstanceOffset=*/0, /*InstanceCount=*/this->NumberOfGlyphPoints };
         }
         // ReplaceShaderConstantsDef declares a quad with two triangles
         // when pipeline is specialized for thick lines and miter joined lines.
@@ -872,25 +885,26 @@ const TRIANGLE_VERTS = array(
         if (pipelineType == GFX_PIPELINE_LINES_THICK ||
           pipelineType == GFX_PIPELINE_LINES_THICK_HOMOGENEOUS_CELL_SIZE)
         {
-          return { /*vertexCount=*/3 * bgInfo.VertexCount,
-            /*instanceCount=*/this->NumberOfGlyphPoints };
+          return { /*VertexOffset=*/0, /*VertexCount=*/3 * bgInfo.VertexCount,
+            /*InstanceOffset=*/0, /*InstanceCount=*/this->NumberOfGlyphPoints };
         }
         if (pipelineType == GFX_PIPELINE_LINES_MITER_JOIN ||
           pipelineType == GFX_PIPELINE_LINES_MITER_JOIN_HOMOGENEOUS_CELL_SIZE)
         {
-          return { /*vertexCount=*/3 * bgInfo.VertexCount,
-            /*instanceCount=*/this->NumberOfGlyphPoints };
+          return { /*VertexOffset=*/0, /*VertexCount=*/3 * bgInfo.VertexCount,
+            /*InstanceOffset=*/0, /*InstanceCount=*/this->NumberOfGlyphPoints };
         }
         // Similar logic for effective total no. of imposter verts
         if (pipelineType == GFX_PIPELINE_LINES_ROUND_CAP_ROUND_JOIN ||
           pipelineType == GFX_PIPELINE_LINES_ROUND_CAP_ROUND_JOIN_HOMOGENEOUS_CELL_SIZE)
         {
-          return { /*vertexCount=*/18 * bgInfo.VertexCount,
-            /*instanceCount=*/this->NumberOfGlyphPoints };
+          return { /*VertexOffset=*/0, /*VertexCount=*/18 * bgInfo.VertexCount,
+            /*InstanceOffset=*/0, /*InstanceCount=*/this->NumberOfGlyphPoints };
         }
         break;
       case vtkWebGPUCellToPrimitiveConverter::TOPOLOGY_SOURCE_POLYGONS:
-        return { /*vertexCount=*/bgInfo.VertexCount, /*instanceCount=*/this->NumberOfGlyphPoints };
+        return { /*VertexOffset=*/0, /*VertexCount=*/bgInfo.VertexCount, /*InstanceOffset=*/0,
+          /*InstanceCount=*/this->NumberOfGlyphPoints };
       case vtkWebGPUCellToPrimitiveConverter::NUM_TOPOLOGY_SOURCE_TYPES:
       default:
         break;
@@ -903,7 +917,8 @@ const TRIANGLE_VERTS = array(
   {
     // See comment in GetDrawCallArgs for explaination of 6 imposter verts.
     const auto& bgInfo = this->TopologyBindGroupInfos[topologySourceType];
-    return { /*VertexCount=*/6 * bgInfo.VertexCount, /*InstanceCount=*/this->NumberOfGlyphPoints };
+    return { /*VertexOffset=*/0, /*VertexCount=*/6 * bgInfo.VertexCount, /*InstanceOffset=*/0,
+      /*InstanceCount=*/this->NumberOfGlyphPoints };
   }
 
 private:
@@ -1249,7 +1264,7 @@ public:
           break;
         }
       } // end composite glyph iteration
-    }   // end entries
+    } // end entries
   }
 
   //------------------------------------------------------------------------------
@@ -1694,7 +1709,7 @@ public:
         }
         glyphParameters->NumberOfPoints++;
       } // if source
-    }   // for each input point
+    } // for each input point
 
     glyphParametersCollection->BuildTime.Modified();
   }

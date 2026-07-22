@@ -51,6 +51,22 @@ foreach(module IN LISTS vtk_module_files)
 ")
 endforeach()
 
+# URL to the shared vtk_versions.json maintained by CI on the doc server.
+# When building locally this is left empty and the JS falls back to the
+# local vtk_versions.json bundled with the build.
+if(NOT DEFINED VTK_DOC_VERSIONS_URL)
+  set(VTK_DOC_VERSIONS_URL "")
+endif()
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/vtk_version_selector.js"
+  "${CMAKE_CURRENT_BINARY_DIR}/vtk_version_selector.js"
+  @ONLY)
+
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/vtk_versions.json.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/vtk_versions.json"
+  @ONLY)
+
 configure_file(
   ${VTK_SOURCE_DIR}/Utilities/Doxygen/doxyfile.in
   ${VTK_BINARY_DIR}/Utilities/Doxygen/doxyfile)
@@ -75,6 +91,7 @@ if(NOT VTK_INSTALL_NO_DOCUMENTATION)
   __vtk_install_documentation_files("*.css")
   __vtk_install_documentation_files("*.gif")
   __vtk_install_documentation_files("*.html")
+  __vtk_install_documentation_files("*.js")
   __vtk_install_documentation_files("*.pl")
   __vtk_install_documentation_files("*.stop")
   install(FILES doc_readme.txt

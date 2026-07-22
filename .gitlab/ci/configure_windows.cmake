@@ -11,6 +11,7 @@ set(VTK_MODULE_ENABLE_VTK_IOFFMPEG NO CACHE STRING "") # ffmpeg
 set(VTK_MODULE_ENABLE_VTK_IOGDAL NO CACHE STRING "") # ffmpeg
 set(VTK_MODULE_ENABLE_VTK_IOLAS NO CACHE STRING "") # liblas, boost
 set(VTK_MODULE_ENABLE_VTK_IOMySQL NO CACHE STRING "") # mysql
+set(VTK_MODULE_ENABLE_VTK_IONanoVDB NO CACHE STRING "") # no nanovdb
 set(VTK_MODULE_ENABLE_VTK_IOODBC NO CACHE STRING "") # odbc
 set(VTK_MODULE_ENABLE_VTK_IOOpenVDB NO CACHE STRING "") # OpenVDB
 set(VTK_MODULE_ENABLE_VTK_IOPDAL NO CACHE STRING "") # pdal
@@ -21,7 +22,6 @@ set(VTK_MODULE_ENABLE_VTK_RenderingExternal NO CACHE STRING "") # glut
 set(VTK_MODULE_ENABLE_VTK_RenderingFreeTypeFontConfig NO CACHE STRING "") # fontconfig
 set(VTK_MODULE_ENABLE_VTK_RenderingMatplotlib NO CACHE STRING "") # matplotlib
 set(VTK_MODULE_ENABLE_VTK_RenderingOpenVR NO CACHE STRING "") # openvr
-set(VTK_MODULE_ENABLE_VTK_RenderingRayTracing NO CACHE STRING "") # ospray
 set(VTK_MODULE_ENABLE_VTK_fides NO CACHE STRING "") # adios
 set(VTK_MODULE_ENABLE_VTK_xdmf3 NO CACHE STRING "") # boost
 set(VTK_MODULE_ENABLE_VTK_IOOCCT NO CACHE STRING "") # occt
@@ -29,6 +29,7 @@ set(VTK_MODULE_ENABLE_VTK_IOIFC NO CACHE STRING "") # IFC based on IfcOpenShell
 set(VTK_MODULE_ENABLE_VTK_IOUSD NO CACHE STRING "") # usd
 set(VTK_ENABLE_CATALYST OFF CACHE BOOL "") # catalyst
 set(VTK_OPENGL_HAS_EGL ON CACHE BOOL "") # egl
+set(VTK_MODULE_ENABLE_VTK_conduit NO CACHE STRING "") # conduit
 
 # PCH causes issues on Windows CI.
 # vtk issue: https://gitlab.kitware.com/vtk/vtk/-/issues/19924

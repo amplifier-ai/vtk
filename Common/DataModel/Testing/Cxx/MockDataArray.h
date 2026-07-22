@@ -47,21 +47,11 @@ public:
 
 protected:
   vtkNew<vtkBuffer<ValueT>> Buffer;
-  bool AllocateTuples(vtkIdType numTuples)
-  {
-    vtkIdType numValues = numTuples * this->GetNumberOfComponents();
-    if (this->Buffer->Allocate(numValues))
-    {
-      this->Size = this->Buffer->GetSize();
-      return true;
-    }
-    return false;
-  }
   bool ReallocateTuples(vtkIdType numTuples)
   {
     if (this->Buffer->Reallocate(numTuples * this->GetNumberOfComponents()))
     {
-      this->Size = this->Buffer->GetSize();
+      this->Capacity = this->Buffer->GetSize();
       return true;
     }
     return false;

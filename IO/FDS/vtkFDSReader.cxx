@@ -13,9 +13,9 @@
 #include "vtkIdTypeArray.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
+#include "vtkLogger.h"
 #include "vtkMathUtilities.h"
 #include "vtkObjectFactory.h"
-#include "vtkPartitionedDataSet.h"
 #include "vtkPartitionedDataSetCollection.h"
 #include "vtkPointData.h"
 #include "vtkPoints.h"
@@ -23,12 +23,19 @@
 #include "vtkRectilinearGrid.h"
 #include "vtkResourceParser.h"
 #include "vtkResourceStream.h"
+#include "vtkSetGet.h"
+#include "vtkSmartPointer.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkStringArray.h"
 #include "vtkStringFormatter.h"
 #include "vtkStringScanner.h"
 #include "vtkTable.h"
+#include "vtkType.h"
 
+#include <cstddef>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
 #include <vtksys/SystemTools.hxx>
 
 #include <array>
@@ -104,6 +111,25 @@ struct ObstacleData
   vtkSmartPointer<vtkRectilinearGrid> Geometry;
   vtkIdType BlockageNumber;
   GridData* AssociatedGrid;
+  std::array<vtkIdType, 6> subExtent;
+};
+
+//------------------------------------------------------------------------------
+struct BlockagePatch
+{
+  // Defined in section 27.11 of the FDS User's Guide
+  int I1 = 0;
+  int I2 = 0;
+  int J1 = 0;
+  int J2 = 0;
+  int K1 = 0;
+  int K2 = 0;
+  int IOR = 0;
+  int OBST_INDEX = 0;
+  int NM = 0;
+
+  // Position of the patch in the patch list
+  vtkIdType pos = 0;
 };
 
 //------------------------------------------------------------------------------
@@ -114,6 +140,11 @@ struct BoundaryFieldData
   std::string FileName;
   bool CellCentered = false;
   std::vector<float> TimeValues;
+
+  // Cached information to speed up the boundary file parsing
+  std::vector<BlockagePatch> Patches;
+  // Access with TimeStepsPositionInFile[requestedTimestep][requestedPatch]
+  std::vector<std::vector<vtkIdType>> TimeStepsPositionInFile;
 };
 
 //------------------------------------------------------------------------------
@@ -212,6 +243,15 @@ struct ConvertToCellCenteredField
         }
       }
     }
+  }
+};
+
+//------------------------------------------------------------------------------
+struct vtkFDSReaderError : public std::runtime_error
+{
+  vtkFDSReaderError(const std::string& message)
+    : std::runtime_error(message)
+  {
   }
 };
 
@@ -442,15 +482,13 @@ vtkSmartPointer<vtkDataArray> ReadSliceFile(const std::string& fileName,
 }
 
 //------------------------------------------------------------------------------
-std::vector<float> ParseTimeStepsInBoundaryFile(const std::string& fileName)
+void PreParseBoundaryFile(::BoundaryFieldData& bfData)
 {
   vtkNew<vtkFileResourceStream> fileStream;
-  if (fileName.empty() || !fileStream->Open(fileName.c_str()))
+  if (bfData.FileName.empty() || !fileStream->Open(bfData.FileName.c_str()))
   {
-    vtkErrorWithObjectMacro(
-      nullptr, << "Failed to open file: "
-               << (fileName.empty() ? fileName : "No file name for boundary given"));
-    return std::vector<float>();
+    throw vtkFDSReaderError(vtk::format("Failed to open file: {}.",
+      bfData.FileName.empty() ? bfData.FileName : "No file name for boundary given"));
   }
 
   vtkNew<vtkResourceParser> parser;
@@ -468,152 +506,129 @@ std::vector<float> ParseTimeStepsInBoundaryFile(const std::string& fileName)
 
   // read number of patches
   parser->Read(reinterpret_cast<char*>(&size), 4);
-  unsigned int nBlockages = 0;
-  parser->Read(reinterpret_cast<char*>(&nBlockages), size);
+  size_t nPatches = 0;
+  parser->Read(reinterpret_cast<char*>(&nPatches), size);
   parser->Read(reinterpret_cast<char*>(&size), 4);
 
-  // discard blockage descriptions
-  for (unsigned int iBlock = 0; iBlock < nBlockages; ++iBlock)
+  // blockage patches descriptions
+  bfData.Patches.resize(nPatches);
+  for (unsigned int iBlock = 0; iBlock < nPatches; ++iBlock)
   {
     parser->Read(reinterpret_cast<char*>(&size), 4);
-    parser->ReadUntil(vtkResourceParser::DiscardNone, ReadNothing, size + 4);
+    // blockage patch data should always be 36 bytes long (see Section 27.11 of the FDS User Guide)
+    if (size != 36)
+    {
+      throw vtkFDSReaderError("Unexpected blockage patch dimensions.");
+    }
+    parser->Read(reinterpret_cast<char*>(&bfData.Patches[iBlock]), size);
+    parser->Read(reinterpret_cast<char*>(&size), 4);
+    bfData.Patches[iBlock].pos = iBlock;
   }
 
-  std::vector<float> timeValues;
-  vtkParseResult result = vtkParseResult::Ok;
   do
   {
     parser->Read(reinterpret_cast<char*>(&size), 4);
     if (size != sizeof(float))
     {
-      break;
+      throw vtkFDSReaderError("Unexpected time value size.");
     }
     float time = 0.0;
     parser->Read(reinterpret_cast<char*>(&time), 4);
-    timeValues.emplace_back(time);
+    std::vector<vtkIdType> timestep(nPatches);
     parser->Read(reinterpret_cast<char*>(&size), 4);
-    for (unsigned int iBlock = 0; iBlock < nBlockages; ++iBlock)
+    for (unsigned int iBlock = 0; iBlock < nPatches; ++iBlock)
     {
+      timestep[iBlock] = parser->Tell();
       parser->Read(reinterpret_cast<char*>(&size), 4);
-      result = parser->ReadUntil(vtkResourceParser::DiscardNone, ReadNothing, size + 4);
+      parser->Seek(size, vtkResourceStream::SeekDirection::Current);
+      // Read size again to trigger EndOfStream
+      parser->Read(reinterpret_cast<char*>(&size), 4);
     }
-  } while (result != vtkParseResult::EndOfStream);
-  return timeValues;
+    bfData.TimeValues.push_back(time);
+    bfData.TimeStepsPositionInFile.push_back(timestep);
+  } while (!parser->GetStream()->EndOfStream());
 }
 
 //------------------------------------------------------------------------------
-vtkSmartPointer<vtkDataArray> ReadBoundaryFile(const std::string& fileName,
-  vtkIdType requestedTimeStep, vtkIdType blockageNumber, vtkIdType nTuples, vtkIdType nComponents)
+vtkSmartPointer<vtkDataArray> ReadBoundaryFile(vtkFileResourceStream* fileStream,
+  const ::BoundaryFieldData& bfData, vtkIdType requestedTimeStep, vtkIdType nComponents,
+  vtkRectilinearGrid& grid, ::ObstacleData& oData)
 {
-  vtkNew<vtkFileResourceStream> fileStream;
-  if (fileName.empty() || !fileStream->Open(fileName.c_str()))
-  {
-    vtkErrorWithObjectMacro(
-      nullptr, << "Failed to open file: "
-               << (fileName.empty() ? fileName : "No file name for boundary given"));
-    return nullptr;
-  }
-
   vtkNew<vtkResourceParser> parser;
   parser->Reset();
   parser->SetStream(fileStream);
   parser->StopOnNewLineOff();
 
-  unsigned int size = 0;
-  // skip header lines
-  for (vtkIdType iL = 0; iL < 3; ++iL)
-  {
-    parser->Read(reinterpret_cast<char*>(&size), 4);
-    parser->ReadUntil(vtkResourceParser::DiscardNone, ReadNothing, size + 4);
-  }
+  vtkSmartPointer<vtkFloatArray> result = vtkSmartPointer<vtkFloatArray>::New();
+  result->SetNumberOfComponents(1);
+  result->SetNumberOfTuples(grid.GetNumberOfPoints());
+  result->Fill(std::numeric_limits<float>::quiet_NaN());
 
-  // read number of patches
-  parser->Read(reinterpret_cast<char*>(&size), 4);
-  unsigned int nBlockages = 0;
-  parser->Read(reinterpret_cast<char*>(&nBlockages), size);
-  parser->Read(reinterpret_cast<char*>(&size), 4);
+  bool foundPatch = false;
 
-  bool foundBlock = false;
-  vtkIdType blockPos = 0;
-  for (unsigned int iBlock = 0; iBlock < nBlockages; ++iBlock)
+  for (auto& currentBlockagePatch : bfData.Patches)
   {
-    parser->Read(reinterpret_cast<char*>(&size), 4);
-    std::vector<int> line(size / 4);
-    if (line.size() != 9)
+    if (static_cast<vtkIdType>(currentBlockagePatch.OBST_INDEX) != oData.BlockageNumber)
     {
-      vtkErrorWithObjectMacro(nullptr, "Error in reading blockage dimensions");
-      return nullptr;
+      continue;
     }
-    parser->Read(reinterpret_cast<char*>(line.data()), size);
+    foundPatch = true;
+
+    auto actualNumberOfValues = (currentBlockagePatch.I2 - currentBlockagePatch.I1 + 1) *
+      (currentBlockagePatch.J2 - currentBlockagePatch.J1 + 1) *
+      (currentBlockagePatch.K2 - currentBlockagePatch.K1 + 1);
+    std::size_t nBytesFloat = actualNumberOfValues * sizeof(float);
+    unsigned int size = 0;
+    parser->Seek(bfData.TimeStepsPositionInFile[requestedTimeStep][currentBlockagePatch.pos],
+      vtkResourceStream::SeekDirection::Begin);
     parser->Read(reinterpret_cast<char*>(&size), 4);
-    if (static_cast<vtkIdType>(line[7]) == blockageNumber)
+
+    if (size != nBytesFloat)
     {
-      blockPos = static_cast<vtkIdType>(iBlock);
-      foundBlock = true;
+      throw vtkFDSReaderError(vtk::format(
+        "Line length seems to be {} bytes when expected {} for floats.", size, nBytesFloat));
+    }
+
+    vtkNew<vtkFloatArray> data;
+    data->SetNumberOfComponents(nComponents);
+    data->SetNumberOfTuples(actualNumberOfValues);
+    std::size_t readBytes = parser->Read(reinterpret_cast<char*>(data->GetPointer(0)), size);
+    if (readBytes != size)
+    {
+      throw vtkFDSReaderError(vtk::format(
+        "Did not read correct number of bytes from file, expected to read {} but read {}.", size,
+        readBytes));
+    }
+
+    auto bndMinI = oData.subExtent[0];
+    auto bndMinJ = oData.subExtent[2];
+    auto bndMinK = oData.subExtent[4];
+    int gridSizeI = grid.GetDimensions()[0];
+    int gridSizeJ = grid.GetDimensions()[1];
+    int patchSizeI = currentBlockagePatch.I2 - currentBlockagePatch.I1 + 1;
+    int patchSizeJ = currentBlockagePatch.J2 - currentBlockagePatch.J1 + 1;
+
+    for (int k = currentBlockagePatch.K1; k <= currentBlockagePatch.K2; ++k)
+    {
+      for (int j = currentBlockagePatch.J1; j <= currentBlockagePatch.J2; ++j)
+      {
+        for (int i = currentBlockagePatch.I1; i <= currentBlockagePatch.I2; ++i)
+        {
+          vtkIdType patchIndex = (k - currentBlockagePatch.K1) * (patchSizeJ * patchSizeI) +
+            (j - currentBlockagePatch.J1) * patchSizeI + (i - currentBlockagePatch.I1);
+          vtkIdType gridIndex =
+            (k - bndMinK) * (gridSizeJ * gridSizeI) + (j - bndMinJ) * gridSizeI + (i - bndMinI);
+          float value = data->GetTuple1(patchIndex);
+          result->SetTuple1(gridIndex, value);
+        }
+      }
     }
   }
 
-  if (!foundBlock)
+  if (!foundPatch)
   {
-    vtkWarningWithObjectMacro(nullptr,
-      "Could not find blockage " << blockageNumber << " in file " << fileName
-                                 << ". Returning zeroed array.");
-    vtkNew<vtkFloatArray> result;
-    result->SetNumberOfComponents(nComponents);
-    result->SetNumberOfTuples(nTuples);
-    return result;
-  }
-
-  vtkIdType nLinesToSkip =
-    (static_cast<vtkIdType>(nBlockages) + 1) * requestedTimeStep + blockPos + 1;
-  for (vtkIdType iL = 0; iL < nLinesToSkip; ++iL)
-  {
-    parser->Read(reinterpret_cast<char*>(&size), 4);
-    parser->ReadUntil(vtkResourceParser::DiscardNone, ReadNothing, size + 4);
-  }
-
-  parser->Read(reinterpret_cast<char*>(&size), 4);
-  std::size_t nBytesFloat = nComponents * nTuples * sizeof(float);
-  std::size_t nBytesDouble = nComponents * nTuples * sizeof(double);
-
-  if (size != nBytesFloat && size != nBytesDouble)
-  {
-    vtkErrorWithObjectMacro(nullptr,
-      "Line length seems to be " << size << " bytes when expected " << nBytesFloat
-                                 << " for floats and " << nBytesDouble << " for doubles");
     return nullptr;
   }
-
-  vtkSmartPointer<vtkDataArray> result;
-  if (size == nBytesFloat)
-  {
-    result = vtkSmartPointer<vtkFloatArray>::New();
-  }
-  else
-  {
-    result = vtkSmartPointer<vtkDoubleArray>::New();
-  }
-  result->SetNumberOfComponents(nComponents);
-  result->SetNumberOfTuples(nTuples);
-  std::size_t readBytes;
-  if (size == nBytesFloat)
-  {
-    readBytes = parser->Read(
-      reinterpret_cast<char*>(vtkFloatArray::FastDownCast(result)->GetPointer(0)), size);
-  }
-  else
-  {
-    readBytes = parser->Read(
-      reinterpret_cast<char*>(vtkDoubleArray::FastDownCast(result)->GetPointer(0)), size);
-  }
-  if (readBytes != size)
-  {
-    vtkErrorWithObjectMacro(nullptr,
-      "Did not read correct number of bytes from file, expected to read " << size << " but read "
-                                                                          << readBytes);
-    return nullptr;
-  }
-
   return result;
 }
 
@@ -930,6 +945,20 @@ public:
   static vtkFDSBoundaryVisitor* New() { VTK_STANDARD_NEW_BODY(vtkFDSBoundaryVisitor<InternalsT>); }
   vtkTypeMacro(vtkFDSBoundaryVisitor, vtkDataAssemblyVisitor);
 
+  bool Initialize()
+  {
+    for (const ::BoundaryFieldData& bfData : this->Internals->BoundaryFields)
+    {
+      this->BoundaryFiles[bfData.FileName] = vtkSmartPointer<vtkFileResourceStream>::New();
+      if (!this->BoundaryFiles[bfData.FileName]->Open(bfData.FileName.c_str()))
+      {
+        vtkErrorMacro("Couldn't open file " << bfData.FileName);
+        return false;
+      }
+    }
+    return true;
+  }
+
   void Visit(int nodeId) override
   {
     if (!this->Internals || !this->OutputPDSC)
@@ -963,42 +992,53 @@ public:
       requestedTimeStep =
         std::clamp<vtkIdType>(requestedTimeStep, 0, bfieldData.TimeValues.size() - 1);
 
-      vtkSmartPointer<vtkDataArray> field = ::ReadBoundaryFile(
-        bfieldData.FileName, requestedTimeStep, oData.BlockageNumber, copy->GetNumberOfPoints(), 1);
-      if (!field)
+      try
       {
+        vtkSmartPointer<vtkDataArray> field = ::ReadBoundaryFile(
+          this->BoundaryFiles[bfieldData.FileName], bfieldData, requestedTimeStep, 1, *copy, oData);
+
+        if (!field)
+        {
+          continue;
+        }
+
+        if (bfieldData.CellCentered)
+        {
+          // If data is cell-centered, convert point data to cell data by dropping specific values
+          vtkSmartPointer<vtkDataArray> cellCenteredField;
+          cellCenteredField.TakeReference(field->NewInstance());
+
+          using Dispatcher =
+            vtkArrayDispatch::Dispatch2ByArrayWithSameValueType<ValidArrayTypes, ValidArrayTypes>;
+          ::ConvertToCellCenteredField worker;
+
+          const auto* ext = copy->GetExtent();
+          const std::array<vtkIdType, 6> extent = { ext[0], ext[1], ext[2], ext[3], ext[4],
+            ext[5] };
+
+          if (!Dispatcher::Execute(
+                field.Get(), cellCenteredField.Get(), worker, extent, ::Boundary))
+          {
+            vtkErrorMacro("Failed to dispatch arrays to convert to cell-centered data.");
+            return;
+          }
+
+          cellCenteredField->SetName(bfieldData.FieldName.c_str());
+          copy->GetCellData()->AddArray(cellCenteredField);
+        }
+        else
+        {
+          field->SetName(bfieldData.FieldName.c_str());
+          copy->GetPointData()->AddArray(field);
+        }
+      }
+      catch (vtkFDSReaderError& err)
+      {
+        vtkLog(WARNING, << err.what());
         vtkWarningMacro("Could not correctly read " << bfieldData.FieldName << " for blockage "
                                                     << oData.BlockageNumber << " on grid "
                                                     << bfieldData.GridID + 1);
         continue;
-      }
-
-      if (bfieldData.CellCentered)
-      {
-        // If data is cell-centered, convert point data to cell data by dropping specific values
-        vtkSmartPointer<vtkDataArray> cellCenteredField;
-        cellCenteredField.TakeReference(field->NewInstance());
-
-        using Dispatcher =
-          vtkArrayDispatch::Dispatch2ByArrayWithSameValueType<ValidArrayTypes, ValidArrayTypes>;
-        ::ConvertToCellCenteredField worker;
-
-        const auto* ext = copy->GetExtent();
-        const std::array<vtkIdType, 6> extent = { ext[0], ext[1], ext[2], ext[3], ext[4], ext[5] };
-
-        if (!Dispatcher::Execute(field.Get(), cellCenteredField.Get(), worker, extent, ::Boundary))
-        {
-          vtkErrorMacro("Failed to dispatch arrays to convert to cell-centered data.");
-          return;
-        }
-
-        cellCenteredField->SetName(bfieldData.FieldName.c_str());
-        copy->GetCellData()->AddArray(cellCenteredField);
-      }
-      else
-      {
-        field->SetName(bfieldData.FieldName.c_str());
-        copy->GetPointData()->AddArray(field);
       }
     }
 
@@ -1021,6 +1061,8 @@ protected:
 private:
   vtkFDSBoundaryVisitor(const vtkFDSBoundaryVisitor&) = delete;
   void operator=(const vtkFDSBoundaryVisitor&) = delete;
+
+  std::unordered_map<std::string, vtkSmartPointer<vtkFileResourceStream>> BoundaryFiles;
 };
 }
 
@@ -1039,7 +1081,6 @@ struct vtkFDSReader::vtkInternals
   std::vector<::DeviceFileData> DevcFiles;
   std::vector<::BoundaryFieldData> BoundaryFields;
 
-  unsigned int MaxNbOfPartitions = 0;
   unsigned int GridCount = 0;
 
   std::array<double, 2> TimeRange;
@@ -1160,10 +1201,9 @@ int vtkFDSReader::RequestInformation(vtkInformation* vtkNotUsed(request),
   const auto baseNodes = this->Assembly->AddNodes(BASE_NODES);
 
   std::string rootNodeName = vtksys::SystemTools::GetFilenameWithoutLastExtension(this->FileName);
-  rootNodeName = this->SanitizeName(rootNodeName);
+  rootNodeName = vtkDataAssembly::MakeValidNodeName(rootNodeName.c_str());
   this->Assembly->SetNodeName(vtkDataAssembly::GetRootNode(), rootNodeName.c_str());
 
-  this->Internals->MaxNbOfPartitions = 0;
   this->Internals->GridCount = 0;
   this->Internals->DevcFiles.clear();
   this->Internals->BoundaryFields.clear();
@@ -1495,14 +1535,12 @@ bool vtkFDSReader::ParseGRID(const std::vector<int>& baseNodes)
   }
 
   // Register grid and fill assembly
-  gridName = this->SanitizeName(gridName);
-  const int idx = this->Assembly->AddNode(gridName.c_str(), baseNodes[GRIDS]);
   ::GridData gridData;
   gridData.GridNb = this->Internals->GridCount;
   this->Internals->GridCount++;
   gridData.Geometry = grid;
-  this->Internals->Grids.emplace(idx, gridData);
-  this->Internals->MaxNbOfPartitions++;
+  auto nodeId = this->GetNodeId(baseNodes[GRIDS], gridName);
+  this->Internals->Grids.emplace(nodeId, gridData);
 
   // Parse obstacles
   std::string obst;
@@ -1552,18 +1590,17 @@ bool vtkFDSReader::ParseGRID(const std::vector<int>& baseNodes)
   }
 
   // Following nBlockages lines contain extents
-  std::vector<::ObstacleData> gridBoundaries;
+  std::vector<::ObstacleData> gridBoundaries(nBlockages);
   for (vtkIdType iBlock = 0; iBlock < nBlockages; ++iBlock)
   {
-    ::ObstacleData oData;
+    ::ObstacleData& oData = gridBoundaries[iBlock];
     // Blockage number is used to retrieve corresponding data in .bf files
     oData.BlockageNumber = iBlock + 1;
-    oData.AssociatedGrid = &(this->Internals->Grids[idx]);
-    std::array<vtkIdType, 6> subExtent;
+    oData.AssociatedGrid = &(this->Internals->Grids[nodeId]);
     for (vtkIdType iExtent = 0; iExtent < 6; ++iExtent)
     {
       // store the extent of the blockages
-      if (!parser.Parse(subExtent[iExtent]))
+      if (!parser.Parse(oData.subExtent[iExtent]))
       {
         vtkErrorMacro("Could not parse " << iExtent << " obstacle sub extent value at line "
                                          << parser.LineNumber);
@@ -1571,24 +1608,21 @@ bool vtkFDSReader::ParseGRID(const std::vector<int>& baseNodes)
       }
     }
 
-    oData.Geometry = ::GenerateSubGrid(this->Internals->Grids[idx].Geometry, subExtent);
+    oData.Geometry = ::GenerateSubGrid(this->Internals->Grids[nodeId].Geometry, oData.subExtent);
 
     // Discard the rest of the line
     if (!parser.DiscardLine())
     {
       return false;
     }
-    gridBoundaries.emplace_back(oData);
   }
 
   for (vtkIdType iBlock = 0; iBlock < nBlockages; ++iBlock)
   {
     auto& oData = gridBoundaries[iBlock];
     std::string blockageName = gridName + "_Blockage_" + vtk::to_string(oData.BlockageNumber);
-    blockageName = this->SanitizeName(blockageName);
-    const int bIdx = this->Assembly->AddNode(blockageName.c_str(), baseNodes[::BOUNDARIES]);
-    this->Internals->Boundaries.emplace(bIdx, oData);
-    this->Internals->MaxNbOfPartitions++;
+    nodeId = this->GetNodeId(baseNodes[BOUNDARIES], blockageName);
+    this->Internals->Boundaries.emplace(nodeId, oData);
   }
 
   return true;
@@ -1688,12 +1722,15 @@ bool vtkFDSReader::ParseCSVF(const std::vector<int>& baseNodes)
     ::ExtractTimeValuesFromCSV(csvReader, fileName, hrrData.TimeValues);
 
     // Register file path and fill assembly
-    nodeName = this->SanitizeName(nodeName);
-    const int idx = this->Assembly->AddNode(nodeName.c_str(), baseNodes[HRR]);
-    this->Internals->HRRs.emplace(idx, hrrData);
-    this->Internals->MaxNbOfPartitions++;
+    auto nodeId = this->GetNodeId(baseNodes[HRR], nodeName);
+    this->Internals->HRRs.emplace(nodeId, hrrData);
   }
   else if (fileType == "steps")
+  {
+    // this is a common thing in the file that we don't yet read so just skip it
+    return true;
+  }
+  else if (fileType == "ctrl")
   {
     // this is a common thing in the file that we don't yet read so just skip it
     return true;
@@ -1761,10 +1798,8 @@ bool vtkFDSReader::ParseDEVICE(const std::vector<int>& baseNodes)
   }
 
   // Register file path and fill assembly
-  std::string nodeName = this->SanitizeName(dData.Name);
-  const int idx = this->Assembly->AddNode(nodeName.c_str(), baseNodes[DEVICES]);
-  this->Internals->Devices.emplace(idx, dData);
-  this->Internals->MaxNbOfPartitions++;
+  auto nodeId = this->GetNodeId(baseNodes[DEVICES], dData.Name);
+  this->Internals->Devices.emplace(nodeId, dData);
 
   return true;
 }
@@ -1787,6 +1822,22 @@ bool vtkFDSReader::ParseSLCFSLCC(const std::vector<int>& baseNodes, bool cellCen
   }
   // FDS counting starts at 1
   sData.AssociatedGridNumber -= 1;
+  // Find the grid name by matching AssociatedGridNumber to GridNb in Internals->Grids
+  std::string associatedGridName;
+  for (const auto& [nodeId, grid] : this->Internals->Grids)
+  {
+    if (grid.GridNb == sData.AssociatedGridNumber)
+    {
+      associatedGridName = this->Assembly->GetNodeName(nodeId);
+      break;
+    }
+  }
+  if (associatedGridName.empty())
+  {
+    vtkErrorMacro("Could not find grid with number " << sData.AssociatedGridNumber + 1
+                                                     << " for slice at line " << parser.LineNumber);
+    return false;
+  }
 
   // Search for dimensions
   // We can have a specified slice ID before that but it's not mandatory
@@ -1915,10 +1966,9 @@ bool vtkFDSReader::ParseSLCFSLCC(const std::vector<int>& baseNodes, bool cellCen
 
   sData.TimeValues = ::ParseTimeStepsInSliceFile(sData.FileName);
 
-  SLCFID = this->SanitizeName(SLCFID);
-  const int idx = this->Assembly->AddNode(SLCFID.c_str(), baseNodes[SLICES]);
-  this->Internals->Slices.emplace(idx, sData);
-  this->Internals->MaxNbOfPartitions++;
+  const auto nodeName = associatedGridName + '_' + SLCFID;
+  auto nodeId = this->GetNodeId(baseNodes[SLICES], nodeName);
+  this->Internals->Slices.emplace(nodeId, sData);
 
   return true;
 }
@@ -1965,7 +2015,14 @@ bool vtkFDSReader::ParseBNDFBNDC(bool cellCentered)
     return false;
   }
 
-  bfData.TimeValues = ::ParseTimeStepsInBoundaryFile(bfData.FileName);
+  try
+  {
+    ::PreParseBoundaryFile(bfData);
+  }
+  catch (const vtkFDSReaderError& err)
+  {
+    vtkErrorMacro("Couldn't parse boundary file : " << err.what());
+  }
 
   // discard rest of line
   if (!parser.DiscardLine())
@@ -2104,6 +2161,10 @@ int vtkFDSReader::RequestData(vtkInformation* vtkNotUsed(request),
     boundaryVisitor->Internals = this->Internals;
     boundaryVisitor->OutputPDSC = output;
     boundaryVisitor->RequestedTimeValue = requestedTimeValue;
+    if (!boundaryVisitor->Initialize())
+    {
+      return 0;
+    }
     outAssembly->Visit(boundaryIdx, boundaryVisitor);
   }
 
@@ -2135,17 +2196,18 @@ vtkSmartPointer<vtkResourceStream> vtkFDSReader::Open()
 }
 
 //------------------------------------------------------------------------------
-std::string vtkFDSReader::SanitizeName(const std::string& name)
+int vtkFDSReader::GetNodeId(int parentNode, const std::string& givenNodeName)
 {
-  if (this->Assembly->IsNodeNameValid(name.c_str()))
+  const auto nodeName = vtkDataAssembly::MakeValidNodeName(givenNodeName.c_str());
+  int nodeId = this->Assembly->GetChild(parentNode, nodeName.c_str());
+  if (nodeId != -1)
   {
-    return name;
+    vtkErrorMacro(<< "Node with name " << nodeName << " already exists under parent node "
+                  << this->Assembly->GetNodeName(parentNode) << ". It won't be added.");
+    return -1;
   }
-
-  std::string newName = this->Assembly->MakeValidNodeName(name.c_str());
-  vtkWarningMacro(
-    "Name " + name + " is not a valid data assembly node name.\nNew name : " << newName);
-  return newName;
+  nodeId = this->Assembly->AddNode(nodeName.c_str(), parentNode);
+  return nodeId;
 }
 
 VTK_ABI_NAMESPACE_END

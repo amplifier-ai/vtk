@@ -19,6 +19,8 @@ vtk_add_test_cxx(vtkFiltersGeneralCxxTests tests
   TestCellValidatorFilter.cxx,NO_VALID
   TestCleanUnstructuredGridStrategies.cxx,NO_VALID
   TestClipDatasetPolyhedrons.cxx,NO_VALID
+  TestClipInclusiveIsovalue.cxx,NO_VALID
+  TestClipPolyLine.cxx,NO_VALID
   TestContourTriangulator.cxx
   TestContourTriangulatorBadData.cxx
   TestContourTriangulatorCutter.cxx
@@ -53,7 +55,7 @@ vtk_add_test_cxx(vtkFiltersGeneralCxxTests tests
   TestPassThrough.cxx,NO_VALID
   TestPointsMatchingTransformFilter.cxx,NO_VALID
   TestRandomAttributeGeneratorFilter.cxx,NO_VALID
-  TestRandomAttributeGeneratorHTG.cxx,NO_VALID,NO_OUTPUT
+  TestRandomAttributeGeneratorHTG.cxx,NO_VALID
   TestRectilinearGridToPointSet.cxx,NO_VALID
   TestReflectionFilter.cxx,NO_VALID
   TestSpatioTemporalHarmonicsAttribute.cxx
@@ -61,6 +63,7 @@ vtk_add_test_cxx(vtkFiltersGeneralCxxTests tests
   TestTableBasedClipDataSet.cxx,NO_VALID
   TestTableFFT.cxx,NO_VALID
   TestTableSplitColumnComponents.cxx,NO_VALID
+  TestTableToRectilinearGrid.cxx,NO_VALID
   TestTemporalPathLineFilter.cxx,NO_VALID
   TestTessellator.cxx,NO_VALID
   TestTransformFilter.cxx,NO_VALID
@@ -84,6 +87,7 @@ vtk_add_test_cxx(vtkFiltersGeneralCxxTests data_tests
   TestGradientAndVorticity.cxx,NO_VALID
   TestIconGlyphFilterGravity.cxx,LOOSE_VALID
   TestQuadraturePoints.cxx
+  TestTransformFilterCache.cxx,NO_VALID
   TestYoungsMaterialInterface.cxx
   )
 

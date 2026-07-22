@@ -14,21 +14,25 @@ set(classes
   vtkEquirectangularToCubeMapTexture
   vtkFastLabeledDataMapper
   vtkFramebufferPass
-  vtkGaussianBlurPass
-  vtkGenericOpenGLRenderWindow
   vtkGLSLModCamera
   vtkGLSLModCoincidentTopology
-  vtkGLSLModLight
-  vtkGLSLModPixelDebugger
   vtkGLSLModifierBase
   vtkGLSLModifierFactory
+  vtkGLSLModLight
+  vtkGLSLModPixelDebugger
+  vtkHexagonalBokehBlurPass
+  vtkGaussianBlurPass
+  vtkGenericOpenGLRenderWindow
   vtkHiddenLineRemovalPass
   vtkImageProcessingPass
   vtkLightingMapPass
   vtkLightsPass
+  vtkOSOpenGLRenderWindow
   vtkOpaquePass
   vtkOpenGLActor
   vtkOpenGLArrayTextureBufferAdapter
+  vtkOpenGLArrayTextureBufferCache
+  vtkOpenGLBatchedLabeledDataMapper
   vtkOpenGLBatchedPolyDataMapper
   vtkOpenGLBillboardTextActor3D
   vtkOpenGLBufferObject
@@ -76,13 +80,16 @@ set(classes
   vtkOpenGLTextActor3D
   vtkOpenGLTextMapper
   vtkOpenGLTexture
+  vtkOpenGLTextureCPUNormalization
+  vtkOpenGLTextureComputeShaderNormalization
+  vtkOpenGLTextureFramebufferNormalization
+  vtkOpenGLTextureNormalizationHelper
   vtkOpenGLUniforms
   vtkOpenGLVertexArrayObject
   vtkOpenGLVertexBufferObject
   vtkOpenGLVertexBufferObjectCache
   vtkOpenGLVertexBufferObjectGroup
   vtkOrderIndependentTranslucentPass
-  vtkOSOpenGLRenderWindow
   vtkOutlineGlowPass
   vtkOverlayPass
   vtkPBRIrradianceTexture
@@ -103,6 +110,7 @@ set(classes
   vtkShadowMapPass
   vtkSimpleMotionBlurPass
   vtkSobelGradientMagnitudePass
+  vtkStencilMaskPass
   vtkTextureObject
   vtkTextureUnitManager
   vtkToneMappingPass
@@ -132,7 +140,10 @@ if (VTK_USE_WIN32_OPENGL AND (NOT CMAKE_CROSSCOMPILING OR DEFINED CMAKE_CROSSCOM
 endif ()
 
 set(sources)
-set(private_sources)
+set(private_headers
+  "Private/vtkOpenGLBatchedLabeledDataMapperInternals.h")
+set(private_sources
+  "Private/vtkOpenGLBatchedLabeledDataMapperInternals.cxx")
 
 set(private_classes
   vtkOpenGLLowMemoryCellTypeAgent
@@ -233,6 +244,7 @@ set(opengl_overrides
   HardwareSelector
   ImageMapper
   ImageSliceMapper
+  BatchedLabeledDataMapper
   Glyph3DMapper
   HyperTreeGridMapper
   Light
@@ -470,11 +482,9 @@ endif ()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (VTK_WEBASSEMBLY_THREADS)
-    # Proxy to pthreads is required to ensure threads can be created asynchronously.
     # OffscreenCanvas is required when using pthreads.
     vtk_module_link_options(VTK::RenderingOpenGL2
       INTERFACE
-        "-sPROXY_TO_PTHREAD=1"
         "-sOFFSCREENCANVAS_SUPPORT=1")
   endif ()
 endif ()

@@ -184,14 +184,14 @@ struct FitCellsFunctor
   void Initialize()
   {
     vtkGenericCell*& cell = this->Cell.Local();
-    cell->PointIds->Allocate(128);
-    cell->Points->Allocate(128);
+    cell->PointIds->Reserve(128);
+    cell->Points->Reserve(128);
 
     vtkIdList*& prims = this->Prims.Local();
-    prims->Allocate(128); // allocate some memory
+    prims->Reserve(128); // allocate some memory
 
     vtkPoints*& primPts = this->PrimPts.Local();
-    primPts->Allocate(128); // allocate some memory
+    primPts->Reserve(128); // allocate some memory
   }
 
   void operator()(vtkIdType cellId, vtkIdType endCellId)
@@ -298,7 +298,7 @@ struct FitCellsFunctor
         min = std::min(z, min);
         max = std::max(z, max);
         sum += z; // to compute average
-      }           // for all tessellated primitives
+      } // for all tessellated primitives
 
       // Now set the cell height
       if (this->Strategy == vtkFitToHeightMapFilter::CELL_AVERAGE_HEIGHT)
@@ -523,7 +523,7 @@ void vtkFitToHeightMapFilter::AdjustPoints(
       min = std::min(z, min);
       max = std::max(z, max);
       sum += z; // to compute average
-    }           // over primitive points
+    } // over primitive points
 
     // Adjust points as specified.
     if (numHits > 0)

@@ -3,7 +3,9 @@ ExternalData_Expand_Arguments(VTKData _
   "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/AMReX/MFIX-Exa/,RECURSE:,REGEX:.*}"
   "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/AMReX/Sample2D/,RECURSE:,REGEX:.*}"
   "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/AMReX/NodalMultiFab/,RECURSE:,REGEX:.*}"
+  "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/AMReX/NodalMainFab/,RECURSE:,REGEX:.*}"
   "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/AMReX/NonZeroOrigin/,RECURSE:,REGEX:.*}"
+  "DATA{${_vtk_build_TEST_INPUT_DATA_DIRECTORY}/Data/AMReX/GhostCells/,RECURSE:,REGEX:.*}"
   )
 
 if (TARGET VTK::ParallelMPI)
@@ -18,9 +20,11 @@ endif()
 vtk_add_test_cxx(vtkIOAMRCxxTests tests
   NO_VALID NO_OUTPUT
   TestAMRFlashReader.cxx
+  TestAMReXGridReaderNodalMainFab.cxx
   TestAMReXGridReaderNodalMultiFab.cxx
   TestAMReXParticlesReader.cxx
   TestAMReXGridReaderNonZeroOrigin.cxx
+  TestAMReXGridReaderGhostCells.cxx
   TestEnzoReader.cxx
   TestVelodyneReader.cxx
   )

@@ -156,6 +156,19 @@ void vtkGridAxesActor3D::SetUseCustomLabels(int axis, bool val)
 }
 
 //-----------------------------------------------------------------------------
+bool vtkGridAxesActor3D::GetUseCustomLabels(int axis)
+{
+  if (axis >= 0 && axis < 3)
+  {
+    return this->UseCustomLabels[axis];
+  }
+  else
+  {
+    return false;
+  }
+}
+
+//-----------------------------------------------------------------------------
 void vtkGridAxesActor3D::SetNumberOfLabels(int axis, vtkIdType val)
 {
   if (axis >= 0 && axis < 3 && this->CustomLabels[axis]->GetNumberOfTuples() != val)
@@ -163,6 +176,17 @@ void vtkGridAxesActor3D::SetNumberOfLabels(int axis, vtkIdType val)
     this->CustomLabels[axis]->SetNumberOfTuples(val);
     this->Modified();
   }
+}
+
+//-----------------------------------------------------------------------------
+vtkIdType vtkGridAxesActor3D::GetNumberOfLabels(int axis)
+{
+  if (axis >= 0 && axis < 3)
+  {
+    return this->CustomLabels[axis]->GetNumberOfTuples();
+  }
+  vtkWarningMacro(<< "Invalid axis(" << axis << "). Expects 0 <= axis < 3.");
+  return 0;
 }
 
 //----------------------------------------------------------------------------
@@ -174,6 +198,17 @@ void vtkGridAxesActor3D::SetLabel(int axis, vtkIdType index, double value)
     this->CustomLabels[axis]->SetValue(index, value);
     this->Modified();
   }
+}
+
+//----------------------------------------------------------------------------
+double vtkGridAxesActor3D::GetLabel(int axis, vtkIdType index)
+{
+  if (axis >= 0 && axis < 3 && index < this->CustomLabels[axis]->GetNumberOfTuples())
+  {
+    return this->CustomLabels[axis]->GetValue(index);
+  }
+  vtkWarningMacro(<< "Invalid axis(" << axis << "). Expects 0 <= axis < 3.");
+  return 0.0;
 }
 
 //----------------------------------------------------------------------------

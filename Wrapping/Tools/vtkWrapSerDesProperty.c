@@ -5,9 +5,11 @@
 #include "vtkWrapSerDesProperty.h"
 #include "vtkParseData.h"
 #include "vtkParseExtras.h"
+#include "vtkParseMain.h"
 #include "vtkParseProperties.h"
 #include "vtkWrap.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -23,6 +25,20 @@
 #define callSetterNextParameterMacro(fp, ...) fprintf(fp, ", " __VA_ARGS__)
 
 #define callSetterEndMacro(fp) fprintf(fp, ");\n")
+
+/* report an unserializable property as "file:line: error: ..." */
+static void vtkWrapSerDes_PropertyError(const ClassInfo* classInfo,
+  const FunctionInfo* functionInfo, const PropertyInfo* propertyInfo, const char* what)
+{
+  const OptionInfo* options = vtkParse_GetCommandLineOptions();
+  const char* fileName =
+    (options != NULL && options->InputFileName != NULL) ? options->InputFileName : "<unknown>";
+  const int lineNumber = functionInfo->Line > 0 ? functionInfo->Line : 1;
+  fprintf(stderr,
+    "%s:%d: error: The property %s::%s cannot be %s. Please create an issue at "
+    "https://gitlab.kitware.com/vtk/vtk/-/issues/new\n",
+    fileName, lineNumber, classInfo->Name, propertyInfo->Name, what);
+}
 
 /* test whether all types in testTypes exist in methodTypes */
 static int vtkWrapSerDes_MethodTypeMatches(
@@ -112,7 +128,7 @@ static int vtkWrapSerDes_IsDeserializable(const unsigned int methodType)
 
 /* -------------------------------------------------------------------- */
 /* If property type or name is to be excluded from marshalling, return 0 */
-static int vtkWrapSerDes_IsAllowable(const HierarchyInfo* hinfo, const ClassInfo* classInfo,
+int vtkWrapSerDes_IsAllowable(const HierarchyInfo* hinfo, const ClassInfo* classInfo,
   const FunctionInfo* functionInfo, const PropertyInfo* propertyInfo, const char** reason)
 {
   const int ALLOWABLE = 1;
@@ -292,7 +308,6 @@ int vtkWrapSerDes_WritePropertySerializer(FILE* fp, const ClassInfo* classInfo,
     return 0;
   }
 
-  int i = 0;
   const int isMappedProperty = functionInfo->MarshalPropertyName != NULL;
   const int isRHSGetter = vtkWrapSerDes_MethodTypeMatches(methodType, VTK_METHOD_GET_RHS) ||
     vtkWrapSerDes_MethodTypeMatches(methodType, VTK_METHOD_GET_IDX_RHS);
@@ -354,7 +369,7 @@ int vtkWrapSerDes_WritePropertySerializer(FILE* fp, const ClassInfo* classInfo,
     fprintf(fp, "  {\n");
     fprintf(fp, "    std::vector<%s> values(%d);\n", propertyInfo->ClassName, propertyInfo->Count);
     fprintf(fp, "    object->%s(%svalues[0]", getterName, getterIdxStr);
-    for (i = 1; i < propertyInfo->Count; ++i)
+    for (int i = 1; i < propertyInfo->Count; ++i)
     {
       fprintf(fp, ", values[%d]", i);
     }
@@ -564,12 +579,7 @@ int vtkWrapSerDes_WritePropertySerializer(FILE* fp, const ClassInfo* classInfo,
     }
     return 1;
   }
-  // __builtin_debugtrap();
-  // __builtin_trap();
-  fprintf(stderr,
-    "Uh oh, the property %s::%s cannot be serialized. Please create an issue at "
-    "https://gitlab.kitware.com/vtk/vtk/-/issues/new\n",
-    classInfo->Name, propertyInfo->Name);
+  vtkWrapSerDes_PropertyError(classInfo, functionInfo, propertyInfo, "serialized");
   exit(1);
 }
 
@@ -789,8 +799,7 @@ int vtkWrapSerDes_WritePropertyDeserializer(FILE* fp, const ClassInfo* classInfo
       if ((propertyInfo->PublicMethods & VTK_METHOD_SET_MULTI) == VTK_METHOD_SET_MULTI)
       {
         callSetterBeginMacro(fp, "      ");
-        int i = 0;
-        for (i = 0; i < propertyInfo->Count; ++i)
+        for (int i = 0; i < propertyInfo->Count; ++i)
         {
           if (i != 0)
           {
@@ -997,12 +1006,7 @@ int vtkWrapSerDes_WritePropertyDeserializer(FILE* fp, const ClassInfo* classInfo
     return 1;
   }
 
-  // __builtin_debugtrap();
-  // __builtin_trap();
-  fprintf(stderr,
-    "Uh oh, the property %s::%s cannot be deserialized. Please create an issue at "
-    "https://gitlab.kitware.com/vtk/vtk/-/issues/new\n",
-    classInfo->Name, propertyInfo->Name);
+  vtkWrapSerDes_PropertyError(classInfo, functionInfo, propertyInfo, "deserialized");
   exit(1);
 }
 
@@ -1012,14 +1016,13 @@ void vtkWrapSerDes_Properties(
 {
   ClassProperties* properties = vtkParseProperties_Create(classInfo, hinfo);
   int i = 0, j = 0;
-  unsigned int methodType = 0;
   FunctionInfo* theFunc = NULL;
   PropertyInfo* theProp = NULL;
   int* isWritten = calloc(properties->NumberOfProperties, sizeof(int));
   for (i = 0; i < classInfo->NumberOfFunctions; ++i)
   {
     theFunc = classInfo->Functions[i];
-    methodType = properties->MethodTypes[i];
+    unsigned int methodType = properties->MethodTypes[i];
     /* Ignore inaccessible methods*/
     if (!theFunc->IsPublic)
     {

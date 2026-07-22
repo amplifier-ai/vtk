@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 from vtkmodules.vtkCommonDataModel import (
-    vtkCellLocatorStrategy,
     vtkStaticCellLocator,
 )
 from vtkmodules.vtkCommonTransforms import vtkTransform
@@ -9,7 +8,7 @@ from vtkmodules.vtkFiltersCore import (
     vtkProbeFilter,
     vtkStructuredGridOutlineFilter,
 )
-from vtkmodules.vtkFiltersGeneral import vtkTransformPolyDataFilter
+from vtkmodules.vtkFiltersGeneral import vtkTransformFilter
 from vtkmodules.vtkFiltersModeling import vtkOutlineFilter
 from vtkmodules.vtkFiltersSources import vtkPlaneSource
 from vtkmodules.vtkIOParallel import vtkMultiBlockPLOT3DReader
@@ -27,7 +26,7 @@ from vtkmodules.util.misc import vtkGetDataRoot
 VTK_DATA_ROOT = vtkGetDataRoot()
 
 # Test alternative methods of probing data including
-# using vtkFindCellStrategy and directly specifying
+# using vtkAbstractCellLocator and directly specifying
 # a cell locator.
 
 # Control test size
@@ -55,7 +54,7 @@ output = pl3d.GetOutput().GetBlock(0)
 
 # Probe with three separate planes. Use different probing approaches on each
 # of the three planes (vtkDataSet::FindCell(), directly specifying a cell
-# locator, and using a vtkFindCellStrategy. Then isocontour the planes.
+# locator, and using a vtkAbstractCellLocator. Then isocontour the planes.
 
 # First plane
 plane = vtkPlaneSource()
@@ -64,7 +63,7 @@ transP1 = vtkTransform()
 transP1.Translate(3.7,0.0,28.37)
 transP1.Scale(5,5,5)
 transP1.RotateY(90)
-tpd1 = vtkTransformPolyDataFilter()
+tpd1 = vtkTransformFilter()
 tpd1.SetInputConnection(plane.GetOutputPort())
 tpd1.SetTransform(transP1)
 probe1 = vtkProbeFilter()
@@ -93,14 +92,14 @@ transP2 = vtkTransform()
 transP2.Translate(9.2,0.0,31.20)
 transP2.Scale(5,5,5)
 transP2.RotateY(90)
-tpd2 = vtkTransformPolyDataFilter()
+tpd2 = vtkTransformFilter()
 tpd2.SetInputConnection(plane.GetOutputPort())
 tpd2.SetTransform(transP2)
 cellLoc = vtkStaticCellLocator()
 probe2 = vtkProbeFilter()
 probe2.SetInputConnection(tpd2.GetOutputPort())
 probe2.SetSourceData(output)
-probe2.SetCellLocatorPrototype(cellLoc)
+probe2.SetCellLocator(cellLoc)
 probe2.DebugOn()
 contour2 = vtkContourFilter()
 contour2.SetInputConnection(probe2.GetOutputPort())
@@ -124,14 +123,14 @@ transP3 = vtkTransform()
 transP3.Translate(13.27,0.0,33.30)
 transP3.Scale(5,5,5)
 transP3.RotateY(90)
-tpd3 = vtkTransformPolyDataFilter()
+tpd3 = vtkTransformFilter()
 tpd3.SetInputConnection(plane.GetOutputPort())
 tpd3.SetTransform(transP3)
-strategy = vtkCellLocatorStrategy()
+cellLocator = vtkStaticCellLocator()
 probe3 = vtkProbeFilter()
 probe3.SetInputConnection(tpd3.GetOutputPort())
 probe3.SetSourceData(output)
-probe3.SetFindCellStrategy(strategy)
+probe3.SetCellLocator(cellLocator)
 probe3.DebugOn()
 contour3 = vtkContourFilter()
 contour3.SetInputConnection(probe3.GetOutputPort())

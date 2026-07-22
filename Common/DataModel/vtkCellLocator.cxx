@@ -21,7 +21,7 @@ vtkStandardNewMacro(vtkCellLocator);
 //------------------------------------------------------------------------------
 vtkCellLocator::vtkNeighborCells::vtkNeighborCells(const int size)
 {
-  this->Points->Allocate(3 * size);
+  this->Points->ReserveValues(3 * size);
 }
 
 //------------------------------------------------------------------------------
@@ -238,9 +238,9 @@ int vtkCellLocator::IntersectWithLine(const double p1[3], const double p2[3], do
                 subIdBest = subId;
                 cellIdBest = cId;
               } // intersection point is in current octant
-            }   // if intersection
-          }     // if (hitCellBounds)
-        }       // if (!CellHasBeenVisited[cId])
+            } // if intersection
+          } // if (hitCellBounds)
+        } // if (!CellHasBeenVisited[cId])
       }
     }
 
@@ -527,10 +527,10 @@ vtkIdType vtkCellLocator::FindClosestPointWithinRadius(double x[3], double radiu
                 refinedRadius2 = minDist2;
               }
             } // if point close enough to cell bounds
-          }   // for each cell in bucket
-        }     // if bucket is within the current best distance
-      }       // if cells in bucket
-    }         // for each overlapping bucket
+          } // for each cell in bucket
+        } // if bucket is within the current best distance
+      } // if cells in bucket
+    } // for each overlapping bucket
 
     // don't want to checker a smaller radius than we just checked so update
     // ii appropriately
@@ -682,17 +682,19 @@ vtkIdList* vtkCellLocator::GetCells(int octantId)
 //------------------------------------------------------------------------------
 void vtkCellLocator::BuildLocator()
 {
-  // don't rebuild if build time is newer than modified and dataset modified time
-  if (this->Tree && this->BuildTime > this->MTime && this->BuildTime > this->DataSet->GetMTime())
+  // if a search structure already exists
+  if (this->Tree)
   {
-    return;
-  }
-  // don't rebuild if UseExistingSearchStructure is ON and a search structure already exists
-  if (this->Tree && this->UseExistingSearchStructure)
-  {
-    this->BuildTime.Modified();
-    vtkDebugMacro(<< "BuildLocator exited - UseExistingSearchStructure");
-    return;
+    // don't rebuild if UseExistingSearchStructure is ON
+    if (this->UseExistingSearchStructure)
+    {
+      return;
+    }
+    // don't rebuild if build time is newer than modified and dataset modified time
+    if (this->BuildTime > this->MTime && this->BuildTime > this->DataSet->GetMTime())
+    {
+      return;
+    }
   }
   this->BuildLocatorInternal();
 }
@@ -802,7 +804,7 @@ void vtkCellLocator::BuildLocatorInternal()
           if (!this->Tree[idx])
           {
             this->Tree[idx] = vtkSmartPointer<vtkIdList>::New();
-            this->Tree[idx]->Allocate(numCellsPerBucket, numCellsPerBucket / 2);
+            this->Tree[idx]->Reserve(numCellsPerBucket);
           }
           this->Tree[idx]->InsertNextId(cellId);
         }
@@ -865,7 +867,7 @@ void vtkCellLocator::GenerateRepresentation(int level, vtkPolyData* pd)
   int numDivs = 1;
 
   pts = vtkPoints::New();
-  pts->Allocate(5000);
+  pts->Reserve(5000);
   polys = vtkCellArray::New();
   polys->AllocateEstimate(4096, 3);
 
@@ -940,9 +942,9 @@ void vtkCellLocator::GenerateRepresentation(int level, vtkPolyData* pd)
           }
 
         } // over negative faces
-      }   // over i divisions
-    }     // over j divisions
-  }       // over k divisions
+      } // over i divisions
+    } // over j divisions
+  } // over k divisions
 
   pd->SetPoints(pts);
   pts->Delete();
@@ -1073,8 +1075,8 @@ double vtkCellLocator::Distance2ToBounds(const double x[3], double bounds[6])
 }
 
 //------------------------------------------------------------------------------
-vtkIdType vtkCellLocator::FindCell(double x[3], double vtkNotUsed(tol2), vtkGenericCell* cell,
-  int& subId, double pcoords[3], double* weights)
+vtkIdType vtkCellLocator::FindCell(
+  double x[3], double tol2, vtkGenericCell* cell, int& subId, double pcoords[3], double* weights)
 {
   this->BuildLocator();
   if (this->Tree == nullptr)
@@ -1089,8 +1091,9 @@ vtkIdType vtkCellLocator::FindCell(double x[3], double vtkNotUsed(tol2), vtkGene
 
   vtkIdList* cellIds;
   int ijk[3];
-  double dist2;
+  double dist2 = 0.;
   vtkIdType idx, cellId;
+  double closestPoint[3];
 
   int leafStart = this->NumberOfOctants -
     this->NumberOfDivisions * this->NumberOfDivisions * this->NumberOfDivisions;
@@ -1102,6 +1105,7 @@ vtkIdType vtkCellLocator::FindCell(double x[3], double vtkNotUsed(tol2), vtkGene
   if ((cellIds = this->Tree[leafStart + ijk[0] + ijk[1] * this->NumberOfDivisions +
          ijk[2] * this->NumberOfDivisions * this->NumberOfDivisions]) != nullptr)
   {
+    const double tol = std::sqrt(tol2);
     // query each cell
     for (idx = 0; idx < cellIds->GetNumberOfIds(); ++idx)
     {
@@ -1109,10 +1113,11 @@ vtkIdType vtkCellLocator::FindCell(double x[3], double vtkNotUsed(tol2), vtkGene
       cellId = cellIds->GetId(idx);
       // check whether we could be close enough to the cell by
       // testing the cell bounds
-      if (this->InsideCellBounds(x, cellId))
+      if (this->InsideCellBounds(x, cellId, tol))
       {
         this->DataSet->GetCell(cellId, cell);
-        if (cell->EvaluatePosition(x, nullptr, subId, pcoords, dist2, weights) == 1)
+        const int stat = cell->EvaluatePosition(x, closestPoint, subId, pcoords, dist2, weights);
+        if (stat != -1 && dist2 <= tol2)
         {
           return cellId;
         }
@@ -1309,7 +1314,7 @@ int vtkCellLocator::IntersectWithLine(const double p1[3], const double p2[3], do
               cellIntersections.emplace_back(cId, hitCellBoundsPosition, tHitCell);
             }
           } // if (hitCellBounds)
-        }   // if (!CellHasBeenVisited[cId])
+        } // if (!CellHasBeenVisited[cId])
       }
     }
 

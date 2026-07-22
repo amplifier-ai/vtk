@@ -219,9 +219,9 @@ void vtkHull::SetPlanes(vtkPlanes* planes)
           this->Planes[idx + 3] = (D > this->Planes[idx + 3] ? D : this->Planes[idx + 3]);
 
         } // special parallel planes case
-      }   // for all planes
-    }     // if points and normals
-  }       // if planes defined
+      } // for all planes
+    } // if points and normals
+  } // if planes defined
 }
 
 //------------------------------------------------------------------------------
@@ -760,7 +760,7 @@ void vtkHull::GenerateHull(vtkPolyData* pd, double* bounds)
   // Create a new set of points and polygons into which the results will
   // be stored
   vtkNew<vtkPoints> newPoints;
-  newPoints->Allocate(numPlanes * 3);
+  newPoints->Reserve(numPlanes * 3);
   vtkNew<vtkCellArray> newPolys;
   newPolys->AllocateEstimate(numPlanes, 3);
 

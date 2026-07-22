@@ -20,7 +20,6 @@
 #define vtkCollection_h
 
 #include "vtkCommonCoreModule.h" // For export macro
-#include "vtkDeprecation.h"      // For VTK_DEPRECATED_IN_9_6_0
 #include "vtkObject.h"
 #include "vtkWrappingHints.h" // For VTK_MARSHALAUTO
 
@@ -104,12 +103,6 @@ public:
   int IsItemPresent(vtkObject* a) VTK_FUTURE_CONST;
 
   /**
-   * Just calls IndexOfFirstOccurrence.
-   */
-  VTK_DEPRECATED_IN_9_6_0("Use correctly spelled IndexOfFirstOccurrence instead.")
-  int IndexOfFirstOccurence(vtkObject* a) VTK_FUTURE_CONST;
-
-  /**
    * Search for the given item and return the 0-based index of its first occurrence in the
    * collection. If the item is not found, the return value is -1. If the item is found, the return
    * value is its first location (a 0-based index). If given item is nullptr, returns -1.
@@ -131,7 +124,7 @@ public:
    * Initialize the traversal of the collection. This means the next call to GetNextItemAsObject()
    * will return the first object in the collection.
    */
-  void InitTraversal() { this->Current = this->Objects.begin(); }
+  void InitTraversal() { this->Current = 0; }
 
   /**
    * A reentrant safe way to iterate through a collection.
@@ -184,14 +177,14 @@ public:
   ///@}
 
 protected:
-  vtkCollection();
+  vtkCollection() = default;
   ~vtkCollection() override;
 
   // See vtkGarbageCollector.h:
   void ReportReferences(vtkGarbageCollector* collector) override;
 
 private:
-  std::vector<vtkObject*>::iterator Current;
+  std::size_t Current = 0;
   std::vector<vtkObject*> Objects;
 
   vtkCollection(const vtkCollection&) = delete;
@@ -200,11 +193,11 @@ private:
 
 inline vtkObject* vtkCollection::GetNextItemAsObject()
 {
-  if (this->Current >= this->Objects.end())
+  if (this->Current >= this->Objects.size())
   {
     return nullptr;
   }
-  vtkObject* obj = *this->Current;
+  vtkObject* obj = this->Objects[this->Current];
   this->Current++;
   return obj;
 }

@@ -16,11 +16,15 @@
 #include "vtkUnsignedCharArray.h"
 
 #define VTK_TEST_READ_PIXELS(condition)                                                            \
-  if (!(condition))                                                                                \
+  do                                                                                               \
   {                                                                                                \
-    vtkLog(ERROR, "Unsatisfied pixel value condition at line " << __LINE__ << ": " << #condition); \
-    return EXIT_FAILURE;                                                                           \
-  }
+    if (!(condition))                                                                              \
+    {                                                                                              \
+      vtkLog(                                                                                      \
+        ERROR, "Unsatisfied pixel value condition at line " << __LINE__ << ": " << #condition);    \
+      return EXIT_FAILURE;                                                                         \
+    }                                                                                              \
+  } while (0)
 
 int TestReadPixels(int, char*[])
 {

@@ -5,12 +5,14 @@
  * @class   vtkFidesWriter
  * @brief   Write ADIOS2 streams using Fides data model
  *
- * vtkFidesWriter uses ADIOS2 to write files using the Fides schema. Fides requires
- * data in Viskores format, so this vtkFidesWriter first converts VTK datasets to Viskores datasets.
- * This also writes out a Fides schema so it can be read back in using vtkFidesReader.
- * The schema is written as an attribute in the ADIOS2 file.
+ * vtkFidesWriter uses ADIOS2 to write files using the Fides schema, writing native
+ * VTK datasets (vtkDataSet, vtkCellGrid, and partitioned collections) through the
+ * Fides VTK backend. It also writes out a Fides schema so the data can be read back
+ * in using vtkFidesReader. The schema is written as an attribute in the ADIOS2 file.
  *
- * Note: Currently only supports BP file engine.
+ * vtkPartitionedDataSetCollection input is written as a Fides collection, preserving
+ * the data assembly. Collections that contain vtkCellGrid partitions are instead
+ * written one partitioned dataset per file.
  *
  * Typical usage is as follows:
  *
@@ -66,7 +68,8 @@ class VTKIOFIDES_EXPORT vtkFidesWriter : public vtkWriter
 public:
   enum EngineTypes
   {
-    BPFile
+    BPFile,
+    SST
   };
 
   static vtkFidesWriter* New();
@@ -79,6 +82,17 @@ public:
    */
   vtkSetFilePathMacro(FileName);
   vtkGetFilePathMacro(FileName);
+  ///@}
+
+  ///@{
+  /**
+   * Set/Get the ADIOS2 config file to be used. Note that the IO object in the config file
+   * *must* be named "fides-write-io". In addition, the engine must be set in the config file.
+   * Using a config file enables compression to be used for writing data. See the ADIOS2
+   * documentation for details on valid configuration files.
+   */
+  vtkSetFilePathMacro(AdiosConfigFile);
+  vtkGetFilePathMacro(AdiosConfigFile);
   ///@}
 
   ///@{
@@ -121,7 +135,8 @@ public:
 
   ///@{
   /**
-   * Set/Get the ADIOS engine to use (currently BPFile only!)
+   * Set/Get the ADIOS engine to use (currently BPFile or SST). If an ADIOS config file is
+   * used, this will be ignored and the engine will be determined by the config file.
    */
   vtkSetMacro(Engine, int);
   vtkGetMacro(Engine, int);
@@ -149,7 +164,7 @@ protected:
   int RequestData(vtkInformation* request, vtkInformationVector** inputVector,
     vtkInformationVector* outputVector) override;
 
-  void WriteData() override;
+  bool WriteDataAndReturn() override;
 
 private:
   vtkFidesWriter(const vtkFidesWriter&) = delete;
@@ -160,6 +175,7 @@ private:
 
   vtkMultiProcessController* Controller;
   char* FileName;
+  char* AdiosConfigFile;
   bool ChooseFieldsToWrite;
   int TimeStepRange[2];
   int TimeStepStride;

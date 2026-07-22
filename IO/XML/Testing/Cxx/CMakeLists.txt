@@ -8,6 +8,7 @@ set(all_tests
   TestReadDuplicateDataArrayNames.cxx,NO_DATA,NO_VALID
   TestSettingTimeArrayInReader.cxx,NO_VALID,NO_OUTPUT
   TestXML.cxx,NO_DATA,NO_VALID,NO_OUTPUT
+  TestXMLBlockSelection.cxx,NO_DATA,NO_VALID,NO_OUTPUT
   TestXMLDuplicatedDataArray.cxx,NO_VALID
   TestXMLGhostCellsImport.cxx
   TestXMLHierarchicalBoxDataFileConverter.cxx,NO_VALID
@@ -28,6 +29,7 @@ set(all_tests
   TestXMLGenericDataObjectReaderStream.cxx,NO_VALID,NO_OUTPUT
   TestXMLWriterWithDataArrayFallback.cxx,NO_VALID
   TestXMLLegacyFileReadIdTypeArrays.cxx,NO_VALID,NO_OUTPUT
+  TestXMLWriteError.cxx,NO_VALID
   TestXMLWriteTimeValue.cxx,NO_VALID
   )
 

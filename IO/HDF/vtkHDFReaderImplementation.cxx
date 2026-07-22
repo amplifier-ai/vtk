@@ -25,7 +25,10 @@
 #include "vtkPartitionedDataSet.h"
 #include "vtkPartitionedDataSetCollection.h"
 #include "vtkPolyData.h"
+#include "vtkRectilinearGrid.h"
 #include "vtkStringFormatter.h"
+#include "vtkStructuredGrid.h"
+#include "vtkTable.h"
 #include "vtkUniformGrid.h"
 #include "vtkUnstructuredGrid.h"
 
@@ -54,7 +57,10 @@ vtkHDFReader::Implementation::Implementation(vtkHDFReader* reader)
   , NumberOfPieces(-1)
   , Reader(reader)
 {
-  std::fill(this->AttributeDataGroup.begin(), this->AttributeDataGroup.end(), -1);
+  for (const auto& attrType : vtkHDFUtilities::GetAttributeTypes())
+  {
+    this->AttributeDataGroup[attrType] = H5I_INVALID_HID;
+  }
   std::fill(this->Version.begin(), this->Version.end(), 0);
 }
 
@@ -149,6 +155,11 @@ bool vtkHDFReader::Implementation::Open(vtkResourceStream* stream, bool quiet)
 //------------------------------------------------------------------------------
 bool vtkHDFReader::Implementation::OpenGroupAsVTKGroup(const std::string& groupPath)
 {
+  if (this->VTKGroup >= 0)
+  {
+    H5Gclose(this->VTKGroup);
+    this->VTKGroup = -1;
+  }
   if ((this->VTKGroup = H5Gopen(this->File, groupPath.c_str(), H5P_DEFAULT)) < 0)
   {
     // the file doesn't exist or we try to read a non-VTKHDF file
@@ -162,6 +173,7 @@ bool vtkHDFReader::Implementation::OpenGroupAsVTKGroup(const std::string& groupP
 bool vtkHDFReader::Implementation::RetrieveHDFInformation(
   const std::string& rootName, const std::string& groupPrefix)
 {
+  this->CloseMemberGroups();
   return vtkHDFUtilities::RetrieveHDFInformation(this->File, rootName, groupPrefix, this->VTKGroup,
     this->Version, this->DataSetType, this->NumberOfPieces, this->AttributeDataGroup);
 }
@@ -201,24 +213,30 @@ void vtkHDFReader::Implementation::Close()
 {
   this->DataSetType = -1;
   this->NumberOfPieces = 0;
+  this->CloseMemberGroups();
   std::fill(this->Version.begin(), this->Version.end(), 0);
-  for (size_t i = 0; i < this->AttributeDataGroup.size(); ++i)
+  if (this->File >= 0)
   {
-    if (this->AttributeDataGroup[i] >= 0)
-    {
-      H5Gclose(this->AttributeDataGroup[i]);
-      this->AttributeDataGroup[i] = -1;
-    }
+    H5Fclose(this->File);
+    this->File = -1;
   }
+}
+
+//------------------------------------------------------------------------------
+void vtkHDFReader::Implementation::CloseMemberGroups()
+{
   if (this->VTKGroup >= 0)
   {
     H5Gclose(this->VTKGroup);
     this->VTKGroup = -1;
   }
-  if (this->File >= 0)
+  for (auto& it : this->AttributeDataGroup)
   {
-    H5Fclose(this->File);
-    this->File = -1;
+    if (it.second >= 0)
+    {
+      H5Gclose(it.second);
+      it.second = -1;
+    }
   }
 }
 
@@ -373,10 +391,17 @@ vtkAbstractArray* vtkHDFReader::Implementation::NewFieldArray(
 
 //------------------------------------------------------------------------------
 vtkDataArray* vtkHDFReader::Implementation::NewMetadataArray(
+  const char* name, const std::vector<hsize_t>& fileExtent)
+{
+  return vtkHDFUtilities::NewArrayForGroup(this->VTKGroup, name, fileExtent);
+}
+
+//------------------------------------------------------------------------------
+vtkDataArray* vtkHDFReader::Implementation::NewMetadataArray(
   const char* name, hsize_t offset, hsize_t size)
 {
   std::vector<hsize_t> fileExtent = { offset, offset + size };
-  return vtkHDFUtilities::NewArrayForGroup(this->VTKGroup, name, fileExtent);
+  return this->NewMetadataArray(name, fileExtent);
 }
 
 //------------------------------------------------------------------------------
@@ -575,14 +600,21 @@ bool vtkHDFReader::Implementation::GetImageAttributes(
 }
 
 //------------------------------------------------------------------------------
-bool vtkHDFReader::Implementation::ComputeAMROffsetsPerLevels(
-  vtkDataArraySelection* dataArraySelection[3], vtkIdType step, unsigned int nLevels)
+bool vtkHDFReader::Implementation::GetDimensionsAttribute(int Dimensions[3])
 {
-  if (!dataArraySelection)
+  if (!this->GetAttribute("Dimensions", 3, Dimensions))
   {
+    vtkErrorWithObjectMacro(this->Reader, "Could not get Dimensions attribute");
     return false;
   }
+  return true;
+}
 
+//------------------------------------------------------------------------------
+bool vtkHDFReader::Implementation::ComputeAMROffsetsPerLevels(
+  const std::map<int, vtkDataArraySelection*>& dataArraySelection, vtkIdType step,
+  unsigned int nLevels)
+{
   this->AMRInformation.Clear();
 
   if (this->DataSetType != VTK_OVERLAPPING_AMR)
@@ -694,7 +726,7 @@ bool vtkHDFReader::Implementation::ComputeAMROffsetsPerLevels(
       const std::vector<std::string> arrayNames = this->GetArrayNames(attributeType);
       for (const std::string& name : arrayNames)
       {
-        if (!dataArraySelection[attributeType]->ArrayIsEnabled(name.c_str()))
+        if (!dataArraySelection.at(attributeType)->ArrayIsEnabled(name.c_str()))
         {
           continue;
         }
@@ -955,6 +987,7 @@ bool vtkHDFReader::Implementation::ReadHyperTreeGridData(vtkHyperTreeGrid* htg,
   const vtkDataArraySelection* arraySelection, const vtkIdType cellOffset,
   const vtkIdType treeIdsOffset, const vtkIdType depthOffset, const vtkIdType descriptorOffset,
   const vtkIdType maskOffset, const vtkIdType partOffset, const vtkIdType verticesPerDepthOffset,
+  const vtkIdType XCoordsOffset, const vtkIdType YCoordsOffset, const vtkIdType ZCoordsOffset,
   const vtkIdType depthLimit, const vtkIdType step)
 {
   htg->Initialize();
@@ -964,7 +997,7 @@ bool vtkHDFReader::Implementation::ReadHyperTreeGridData(vtkHyperTreeGrid* htg,
     return false;
   }
 
-  if (!this->ReadHyperTreeGridDimensions(htg))
+  if (!this->ReadHyperTreeGridDimensions(htg, XCoordsOffset, YCoordsOffset, ZCoordsOffset))
   {
     return false;
   }
@@ -998,7 +1031,7 @@ bool vtkHDFReader::Implementation::ReadHyperTreeGridData(vtkHyperTreeGrid* htg,
   if (hasMask)
   {
     vtkNew<vtkBitArray> mask;
-    mask->Allocate(cellCount);
+    mask->ReserveValues(cellCount);
     htg->SetMask(mask);
   }
 
@@ -1017,7 +1050,7 @@ bool vtkHDFReader::Implementation::ReadHyperTreeGridData(vtkHyperTreeGrid* htg,
 
   // Iterate over trees, building them taking depth limiter into consideration.
   // Also appends masking and cell data
-  for (const vtkIdType& treeId : treeIds)
+  for (size_t treeId = 0; treeId < treeIds.size(); treeId++)
   {
     // Compute both the total number of cells and the number of cells below the depth limit in the
     // current tree Number of cells in the current tree = sum of the number of cells in all depths
@@ -1040,7 +1073,7 @@ bool vtkHDFReader::Implementation::ReadHyperTreeGridData(vtkHyperTreeGrid* htg,
     // The descriptor has 1 bit entry for each cell in the tree, except for the last depth
     const vtkIdType descriptorSize = totalTreeSize - lastDepthSize;
     const vtkIdType readableDescriptorSize = readableTreeSize - lastReadableDepthSize;
-    htg->InitializeNonOrientedCursor(treeCursor, treeId, true);
+    htg->InitializeNonOrientedCursor(treeCursor, treeIds[treeId], true);
     treeCursor->SetGlobalIndexStart(outputCellOffset);
 
     if (!this->AppendCellDataForHyperTree(
@@ -1128,7 +1161,8 @@ bool vtkHDFReader::Implementation::ReadHyperTreeGridMetaInfo(vtkHyperTreeGrid* h
 }
 
 //------------------------------------------------------------------------------
-bool vtkHDFReader::Implementation::ReadHyperTreeGridDimensions(vtkHyperTreeGrid* htg)
+bool vtkHDFReader::Implementation::ReadHyperTreeGridDimensions(vtkHyperTreeGrid* htg,
+  const vtkIdType XCoordsOffset, const vtkIdType YCoordsOffset, const vtkIdType ZCoordsOffset)
 {
   std::array<int, 3> dimensions;
   if (!this->GetAttribute("Dimensions", 1, dimensions.data()))
@@ -1138,13 +1172,16 @@ bool vtkHDFReader::Implementation::ReadHyperTreeGridDimensions(vtkHyperTreeGrid*
   }
 
   // Read coordinate arrays
-  std::vector<hsize_t> coordinates_extent{ 0, static_cast<hsize_t>(dimensions[0]) };
+  std::vector<hsize_t> coordinates_extent{ static_cast<hsize_t>(XCoordsOffset),
+    static_cast<hsize_t>(XCoordsOffset + dimensions[0]) };
   auto XCoordinates = vtk::TakeSmartPointer(
     vtkHDFUtilities::NewArrayForGroup(this->VTKGroup, "XCoordinates", coordinates_extent));
-  coordinates_extent[1] = static_cast<hsize_t>(dimensions[1]);
+  coordinates_extent[0] = static_cast<hsize_t>(YCoordsOffset);
+  coordinates_extent[1] = static_cast<hsize_t>(YCoordsOffset + dimensions[1]);
   auto YCoordinates = vtk::TakeSmartPointer(
     vtkHDFUtilities::NewArrayForGroup(this->VTKGroup, "YCoordinates", coordinates_extent));
-  coordinates_extent[1] = static_cast<hsize_t>(dimensions[2]);
+  coordinates_extent[0] = static_cast<hsize_t>(ZCoordsOffset);
+  coordinates_extent[1] = static_cast<hsize_t>(ZCoordsOffset + dimensions[2]);
   auto ZCoordinates = vtk::TakeSmartPointer(
     vtkHDFUtilities::NewArrayForGroup(this->VTKGroup, "ZCoordinates", coordinates_extent));
 
@@ -1184,7 +1221,7 @@ bool vtkHDFReader::Implementation::CreateHyperTreeGridCellArrays(vtkHyperTreeGri
       }
 
       array->SetName(arrayName.c_str());
-      array->Allocate(cellCount * array->GetNumberOfComponents());
+      array->ReserveTuples(cellCount);
       vtkDataSetAttributes* cellData = htg->GetCellData();
       cellData->AddArray(array);
       this->AttachDatasetAttributeToArray(cellType, array, cellData);
@@ -1301,6 +1338,30 @@ vtkIdType vtkHDFReader::Implementation::GetArrayOffset(
 }
 
 //------------------------------------------------------------------------------
+vtkIdType vtkHDFReader::Implementation::GetTemporalOffset(vtkIdType step, const std::string& name)
+{
+  if (H5Lexists(this->VTKGroup, "Steps", H5P_DEFAULT) <= 0)
+  {
+    return -1;
+  }
+
+  // Steps group does exist
+  vtkHDF::ScopedH5GHandle steps = H5Gopen(this->VTKGroup, "Steps", H5P_DEFAULT);
+
+  if (H5Lexists(steps, name.c_str(), H5P_DEFAULT) <= 0)
+  {
+    return -1;
+  }
+
+  std::vector<vtkIdType> buffer = vtkHDFUtilities::GetMetadata(steps, name.c_str(), 1, step);
+  if (buffer.empty())
+  {
+    return -1;
+  }
+  return buffer[0];
+}
+
+//------------------------------------------------------------------------------
 std::array<vtkIdType, 2> vtkHDFReader::Implementation::GetFieldArraySize(
   vtkIdType step, std::string name)
 {
@@ -1331,6 +1392,18 @@ vtkSmartPointer<vtkDataObject> vtkHDFReader::Implementation::GetNewDataSet(
   else if (dataSetType == VTK_IMAGE_DATA)
   {
     newOutput = vtkSmartPointer<vtkImageData>::New();
+  }
+  else if (dataSetType == VTK_RECTILINEAR_GRID)
+  {
+    newOutput = vtkSmartPointer<vtkRectilinearGrid>::New();
+  }
+  else if (dataSetType == VTK_STRUCTURED_GRID)
+  {
+    newOutput = vtkSmartPointer<vtkStructuredGrid>::New();
+  }
+  else if (dataSetType == VTK_TABLE)
+  {
+    newOutput = vtkSmartPointer<vtkTable>::New();
   }
   else if (dataSetType == VTK_UNSTRUCTURED_GRID)
   {

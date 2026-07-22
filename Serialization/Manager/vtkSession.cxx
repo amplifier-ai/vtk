@@ -15,12 +15,17 @@
 #include "vtkRenderer.h"
 #endif
 
+#if VTK_MODULE_ENABLE_VTK_RenderingWebXR
+#include "vtkWebXRRenderWindowInteractor.h"
+#endif
+
 #include <map>
 #include <set>
 #include <string>
 
 #include <iostream>
 #include <sstream>
+#include <unordered_set>
 
 struct vtkSessionImpl
 {
@@ -28,6 +33,7 @@ struct vtkSessionImpl
   vtkSessionJsonParseFunc ParseJson;
   vtkSessionJsonStringifyFunc StringifyJson;
   std::map<std::string, std::set<std::string>> SkippedClassProperties;
+  std::unordered_map<vtkTypeUInt32, std::unordered_set<unsigned long>> ObserverTags;
 };
 
 struct CallbackBridge
@@ -200,7 +206,11 @@ extern "C"
   //-------------------------------------------------------------------------------
   uint8_t* vtkSessionGetBlob(vtkSession session, const char* hash, size_t* length)
   {
-    auto blobArray = session->Manager->GetBlob(hash);
+    // Use copy=false so the returned pointer references the blob storage owned
+    // by the manager's marshal context, which outlives this call. With copy=true
+    // the data would be owned solely by the local smart pointer and freed on
+    // return, leaving the caller with a dangling pointer.
+    auto blobArray = session->Manager->GetBlob(hash, /*copy=*/false);
     *length = static_cast<std::size_t>(blobArray->GetNumberOfValues());
     return blobArray->GetPointer(0);
   }
@@ -290,6 +300,11 @@ extern "C"
     if (auto* renderWindow = vtkRenderWindow::SafeDownCast(objectImpl))
     {
       renderWindow->SetSize(width, height);
+      // Also set the size on interactor
+      if (auto* interactor = renderWindow->GetInteractor())
+      {
+        interactor->SetSize(width, height);
+      }
       return vtkSessionResultSuccess;
     }
     else if (objectImpl != nullptr)
@@ -360,6 +375,36 @@ extern "C"
 #else
     (void)objectImpl;
     vtkLog(ERROR, << "VTK_RenderingCore module is not enabled. Cannot reset camera.");
+    return vtkSessionResultFailure;
+#endif
+  }
+
+  //-------------------------------------------------------------------------------
+  vtkSessionResult vtkSessionStartWebXR([[maybe_unused]] vtkTypeUInt8 mode,
+    [[maybe_unused]] vtkTypeUInt32 requiredFeatures,
+    [[maybe_unused]] vtkTypeUInt32 optionalFeatures)
+  {
+#if VTK_MODULE_ENABLE_VTK_RenderingWebXR
+    vtkWebXRRenderWindowInteractor::StartXR(
+      static_cast<vtkWebXRRenderWindowInteractor::SessionMode>(mode), requiredFeatures,
+      optionalFeatures);
+    return vtkSessionResultSuccess;
+#else
+    vtkLog(ERROR,
+      << "WebXR not supported. Please compile vtk with -DVTK_MODULE_ENABLE_VTK_RenderingWebXR=YES");
+    return vtkSessionResultFailure;
+#endif
+  }
+
+  //-------------------------------------------------------------------------------
+  vtkSessionResult vtkSessionStopWebXR()
+  {
+#if VTK_MODULE_ENABLE_VTK_RenderingWebXR
+    vtkWebXRRenderWindowInteractor::StopXR();
+    return vtkSessionResultSuccess;
+#else
+    vtkLog(ERROR,
+      << "WebXR not supported. Please compile vtk with -DVTK_MODULE_ENABLE_VTK_RenderingWebXR=YES");
     return vtkSessionResultFailure;
 #endif
   }
@@ -461,7 +506,9 @@ extern "C"
         auto* bridge = reinterpret_cast<CallbackBridge*>(clientData);
         bridge->F(bridge->SenderId, vtkCommand::GetStringFromEventId(eid));
       });
-    return objectImpl->AddObserver(eventName, callbackCmd);
+    const auto tag = objectImpl->AddObserver(eventName, callbackCmd);
+    session->ObserverTags[object].insert(tag);
+    return tag;
   }
 
   //-------------------------------------------------------------------------------
@@ -474,7 +521,45 @@ extern "C"
       return vtkSessionResultFailure;
     }
     objectImpl->RemoveObserver(tag);
+    if (auto mapIt = session->ObserverTags.find(object); mapIt != session->ObserverTags.end())
+    {
+      if (auto it = mapIt->second.find(tag); it != mapIt->second.end())
+      {
+        mapIt->second.erase(it);
+      }
+    }
     return vtkSessionResultSuccess;
+  }
+
+  //-------------------------------------------------------------------------------
+  vtkSessionResult vtkSessionRemoveAllObservers(vtkSession session, vtkObjectHandle object)
+  {
+    auto* objectImpl = vtkObject::SafeDownCast(session->Manager->GetObjectAtId(object));
+    if (objectImpl == nullptr)
+    {
+      return vtkSessionResultFailure;
+    }
+    if (auto mapIt = session->ObserverTags.find(object); mapIt != session->ObserverTags.end())
+    {
+      for (const auto& tag : mapIt->second)
+      {
+        objectImpl->RemoveObserver(tag);
+      }
+      session->ObserverTags.erase(mapIt);
+    }
+    return vtkSessionResultSuccess;
+  }
+
+  //-------------------------------------------------------------------------------
+  void vtkSessionRemoveAllObserversFromAllObjects(vtkSession session)
+  {
+    for (const auto& id : session->Manager->GetAllDependencies(vtkObjectManager::ROOT()))
+    {
+      if (auto* objectImpl = vtkObject::SafeDownCast(session->Manager->GetObjectAtId(id)))
+      {
+        objectImpl->RemoveAllObservers();
+      }
+    }
   }
 
   //-------------------------------------------------------------------------------

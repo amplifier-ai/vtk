@@ -184,6 +184,7 @@ struct FunctionInfo_
   const char* SizeHint;          /* hint the size e.g. for operator[] */
   const char* DeprecatedReason;  /* reason for deprecation, or NULL */
   const char* DeprecatedVersion; /* version of deprecation, or NULL */
+  int Line; /* line in the file where the declaration starts, or 0 if unknown */
   int IsOperator;
   int IsVariadic;
   int IsExcluded;        /* marked as excluded from wrapping */
@@ -198,6 +199,7 @@ struct FunctionInfo_
   int IsOverride;        /* methods only */
   int IsMarshalExcluded; /* methods only */
   int IsUnblockThreads;  /* hint to unlock Python GIL before calling */
+  int IsMaySuspend;      /* hint that method may suspend, wrap as async */
   int IsExplicit;        /* constructors only */
 #ifndef VTK_PARSE_LEGACY_REMOVE
   int NumberOfArguments;            /* legacy */
@@ -225,6 +227,7 @@ typedef struct UsingInfo_
   const char* Name; /* null for using whole namespace */
   const char* Comment;
   const char* Scope; /* the namespace or class */
+  int IsType;        /* indicates that the name is a type */
 } UsingInfo;
 
 /**

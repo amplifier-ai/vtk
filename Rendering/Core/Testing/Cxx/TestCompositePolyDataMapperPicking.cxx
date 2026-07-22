@@ -172,7 +172,6 @@ int TestCompositePolyDataMapperPicking(int argc, char* argv[])
   unsigned levelEnd = 1;
   int numLevels = sizeof(blocksPerLevel) / sizeof(blocksPerLevel[0]);
   int numLeaves = 0;
-  int numNodes = 0;
   std::string blockName("Rolf");
   mapper->SetInputDataObject(data.GetPointer());
   for (int level = 1; level < numLevels; ++level)
@@ -181,7 +180,7 @@ int TestCompositePolyDataMapperPicking(int argc, char* argv[])
     for (unsigned parent = levelStart; parent < levelEnd; ++parent)
     {
       blocks[parent]->SetNumberOfBlocks(nblocks);
-      for (int block = 0; block < nblocks; ++block, ++numNodes)
+      for (int block = 0; block < nblocks; ++block)
       {
         if (level == numLevels - 1)
         {
@@ -303,7 +302,7 @@ int TestCompositePolyDataMapperPicking(int argc, char* argv[])
   // Verify pick
   std::map<int, std::vector<int>>& bPrims = com->GetBlockPrims();
   if (bPrims.find(48) == bPrims.end() ||
-    std::find(bPrims[48].begin(), bPrims[48].end(), 14) == bPrims[48].end() ||
+    std::find(bPrims[48].begin(), bPrims[48].end(), 11) == bPrims[48].end() ||
     bPrims.find(82) == bPrims.end() ||
     std::find(bPrims[82].begin(), bPrims[82].end(), 114) == bPrims[82].end())
   {

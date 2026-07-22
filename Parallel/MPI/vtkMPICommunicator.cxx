@@ -3,6 +3,7 @@
 
 #include "vtkMPICommunicator.h"
 
+#include "vtkLogger.h"
 #include "vtkMPI.h"
 #include "vtkMPIController.h"
 #include "vtkObjectFactory.h"
@@ -643,7 +644,9 @@ vtkMPICommunicator::~vtkMPICommunicator()
   // Free the handle if required and asked for.
   if (this->MPIComm)
   {
-    if (this->MPIComm->Handle && !this->KeepHandle)
+    int mpi_finalized = 0;
+    MPI_Finalized(&mpi_finalized);
+    if (!mpi_finalized && this->MPIComm->Handle && !this->KeepHandle)
     {
       if (*(this->MPIComm->Handle) != MPI_COMM_NULL)
       {
@@ -768,6 +771,25 @@ int vtkMPICommunicator::Initialize(vtkProcessGroup* group)
 }
 
 //------------------------------------------------------------------------------
+void vtkMPICommunicator::InitializeAttributes()
+{
+  // We need to retrieve the tag max value at initialization time to keep the value accessible. If
+  // MPI_Comm_Split is called, the MPI_TAG_UB will not be accessible in the sub-communicators.
+  int* valuePtr = nullptr;
+  int flag = 0;
+  int success = CheckForMPIError(
+    MPI_Comm_get_attr(MPI_COMM_WORLD, MPI_TAG_UB, static_cast<void*>(&valuePtr), &flag));
+  if (!flag || !success)
+  {
+    vtkLogF(ERROR, "MPI attribute MPI_TAG_UB could not be retrieved.");
+    this->TagMaxValue = -1;
+    return;
+  }
+
+  this->TagMaxValue = *valuePtr;
+}
+
+//------------------------------------------------------------------------------
 int vtkMPICommunicator::SplitInitialize(vtkCommunicator* oldcomm, int color, int key)
 {
   if (this->Initialized)
@@ -845,6 +867,8 @@ void vtkMPICommunicator::InitializeCopy(vtkMPICommunicator* source)
 
   this->LocalProcessId = source->LocalProcessId;
   this->NumberOfProcesses = source->NumberOfProcesses;
+
+  this->TagMaxValue = source->TagMaxValue;
 
   this->Initialized = source->Initialized;
   this->Modified();

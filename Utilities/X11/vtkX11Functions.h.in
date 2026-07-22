@@ -104,7 +104,7 @@
 #define vtkXSetWMName VTK_ABI_NAMESPACE_MANGLE(vtkXSetWMName)
 #define vtkXSetWMProtocols VTK_ABI_NAMESPACE_MANGLE(vtkXSetWMProtocols)
 #define vtkXStoreName VTK_ABI_NAMESPACE_MANGLE(vtkXStoreName)
-#define vtkXStringListToTextProperty VTK_ABI_NAMESPACE_MANGLE(vtkXStringListToTextProperty)
+#define vtkXutf8TextListToTextProperty VTK_ABI_NAMESPACE_MANGLE(vtkXutf8TextListToTextProperty)
 #define vtkXSync VTK_ABI_NAMESPACE_MANGLE(vtkXSync)
 #define vtkXUndefineCursor VTK_ABI_NAMESPACE_MANGLE(vtkXUndefineCursor)
 #define vtkXUnmapWindow VTK_ABI_NAMESPACE_MANGLE(vtkXUnmapWindow)
@@ -117,6 +117,10 @@
 #define vtkXGetVisualInfo VTK_ABI_NAMESPACE_MANGLE(vtkXGetVisualInfo)
 #define vtkXMatchVisualInfo VTK_ABI_NAMESPACE_MANGLE(vtkXMatchVisualInfo)
 #define vtkXGetErrorText VTK_ABI_NAMESPACE_MANGLE(vtkXGetErrorText)
+#define vtkXClearWindow VTK_ABI_NAMESPACE_MANGLE(vtkXClearWindow)
+#define vtkXFreeColormap VTK_ABI_NAMESPACE_MANGLE(vtkXFreeColormap)
+#define vtkXMapRaised VTK_ABI_NAMESPACE_MANGLE(vtkXMapRaised)
+#define vtkXWindowEvent VTK_ABI_NAMESPACE_MANGLE(vtkXWindowEvent)
 
 #if VTK_HAVE_XCURSOR
 #define vtkXcursorFilenameLoadCursor VTK_ABI_NAMESPACE_MANGLE(vtkXcursorFilenameLoadCursor)
@@ -200,7 +204,8 @@ extern "C"
   typedef int (*vtkXSetWMNameType)(Display*, Window, XTextProperty*);
   typedef int (*vtkXSetWMProtocolsType)(Display*, Window, Atom*, int);
   typedef int (*vtkXStoreNameType)(Display*, Window, const char*);
-  typedef int (*vtkXStringListToTextPropertyType)(char**, int, XTextProperty*);
+  typedef int (*vtkXutf8TextListToTextPropertyType)(
+    Display*, char**, int, XICCEncodingStyle, XTextProperty*);
   typedef int (*vtkXSyncType)(Display*, Bool);
   typedef int (*vtkXUndefineCursorType)(Display*, Window);
   typedef int (*vtkXUnmapWindowType)(Display*, Window);
@@ -215,6 +220,10 @@ extern "C"
   typedef XVisualInfo* (*vtkXGetVisualInfoType)(Display*, long, XVisualInfo*, int*);
   typedef int (*vtkXMatchVisualInfoType)(Display*, int, int, int, XVisualInfo*);
   typedef int (*vtkXGetErrorTextType)(Display*, int, char*, int);
+  typedef int (*vtkXClearWindowType)(Display*, Window);
+  typedef Colormap (*vtkXFreeColormapType)(Display*, Window);
+  typedef int (*vtkXMapRaisedType)(Display*, Window);
+  typedef int (*vtkXWindowEventType)(Display*, Window, long, XEvent*);
   // Xcursor API
 #if VTK_HAVE_XCURSOR
   typedef Cursor (*vtkXcursorFilenameLoadCursorType)(Display*, const char*);
@@ -270,7 +279,7 @@ extern "C"
   VTKX11_EXPORT extern vtkXSetWMNameType vtkXSetWMName;
   VTKX11_EXPORT extern vtkXSetWMProtocolsType vtkXSetWMProtocols;
   VTKX11_EXPORT extern vtkXStoreNameType vtkXStoreName;
-  VTKX11_EXPORT extern vtkXStringListToTextPropertyType vtkXStringListToTextProperty;
+  VTKX11_EXPORT extern vtkXutf8TextListToTextPropertyType vtkXutf8TextListToTextProperty;
   VTKX11_EXPORT extern vtkXSyncType vtkXSync;
   VTKX11_EXPORT extern vtkXUndefineCursorType vtkXUndefineCursor;
   VTKX11_EXPORT extern vtkXUnmapWindowType vtkXUnmapWindow;
@@ -283,6 +292,10 @@ extern "C"
   VTKX11_EXPORT extern vtkXGetVisualInfoType vtkXGetVisualInfo;
   VTKX11_EXPORT extern vtkXMatchVisualInfoType vtkXMatchVisualInfo;
   VTKX11_EXPORT extern vtkXGetErrorTextType vtkXGetErrorText;
+  VTKX11_EXPORT extern vtkXClearWindowType vtkXClearWindow;
+  VTKX11_EXPORT extern vtkXFreeColormapType vtkXFreeColormap;
+  VTKX11_EXPORT extern vtkXMapRaisedType vtkXMapRaised;
+  VTKX11_EXPORT extern vtkXWindowEventType vtkXWindowEvent;
   // Xcursor API
 #if VTK_HAVE_XCURSOR
   VTKX11_EXPORT extern vtkXcursorFilenameLoadCursorType vtkXcursorFilenameLoadCursor;

@@ -60,7 +60,7 @@ struct CountPointsFunctor
   void Initialize()
   {
     vtkIdList*& pIds = this->PIds.Local();
-    pIds->Allocate(128); // allocate some memory
+    pIds->Reserve(128); // allocate some memory
   }
 
   void operator()(vtkIdType pointId, vtkIdType endPointId)
@@ -104,7 +104,7 @@ struct CountPointsFunctor
             numNewPts++;
           }
         } // larger id
-      }   // for all neighbors
+      } // for all neighbors
       *count++ = numNewPts;
     } // for all points in this batch
   }
@@ -159,7 +159,7 @@ struct GeneratePointsFunctor
   void Initialize()
   {
     vtkIdList*& pIds = this->PIds.Local();
-    pIds->Allocate(128); // allocate some memory
+    pIds->Reserve(128); // allocate some memory
   }
 
   void operator()(vtkIdType pointId, vtkIdType endPointId)
@@ -207,8 +207,8 @@ struct GeneratePointsFunctor
             outPtId++;
           }
         } // larger id
-      }   // for all neighbor points
-    }     // for all points in this batch
+      } // for all neighbor points
+    } // for all points in this batch
   }
 
   void Reduce() {}

@@ -1131,6 +1131,7 @@ void vtkNetCDFCFReader::GetUpdateExtentForOutput(vtkDataSet* output, int extent[
 //------------------------------------------------------------------------------
 void vtkNetCDFCFReader::AddRectilinearCoordinates(vtkImageData* imageOutput)
 {
+  const auto* dims = imageOutput->GetDimensions();
   double origin[3];
   origin[0] = origin[1] = origin[2] = 0.0;
   double spacing[3];
@@ -1146,6 +1147,10 @@ void vtkNetCDFCFReader::AddRectilinearCoordinates(vtkImageData* imageOutput)
     vtkDimensionInfo* dimInfo = this->GetDimensionInfo(dim);
     origin[i] = dimInfo->GetOrigin();
     spacing[i] = dimInfo->GetSpacing();
+    if (dims[i] == 1 || std::isnan(spacing[i]))
+    {
+      spacing[i] = 1.0;
+    }
   }
 
   imageOutput->SetOrigin(origin);
@@ -1293,7 +1298,7 @@ void vtkNetCDFCFReader::Add1DRectilinearCoordinates(vtkPoints* points, const int
 void vtkNetCDFCFReader::Add2DRectilinearCoordinates(vtkPoints* points, const int extent[6])
 {
   points->SetDataTypeToDouble();
-  points->Allocate(
+  points->Reserve(
     (extent[1] - extent[0] + 1) * (extent[3] - extent[2] + 1) * (extent[5] - extent[4] + 1));
 
   vtkDependentDimensionInfo* info = this->FindDependentDimensionInfo(this->LoadingDimensions);
@@ -1368,7 +1373,7 @@ void vtkNetCDFCFReader::FakeStructuredCoordinates(vtkStructuredGrid* structuredO
 
   vtkNew<vtkPoints> points;
   points->SetDataTypeToDouble();
-  points->Allocate(
+  points->Reserve(
     (extent[1] - extent[0] + 1) * (extent[3] - extent[2] + 1) * (extent[5] - extent[4] + 1));
 
   for (int kIndex = extent[4]; kIndex <= extent[5]; kIndex++)
@@ -1411,7 +1416,7 @@ void vtkNetCDFCFReader::Add2DRectilinearCoordinates(
 void vtkNetCDFCFReader::Add1DSphericalCoordinates(vtkPoints* points, const int extent[6])
 {
   points->SetDataTypeToDouble();
-  points->Allocate(
+  points->Reserve(
     (extent[1] - extent[0] + 1) * (extent[3] - extent[2] + 1) * (extent[5] - extent[4] + 1));
 
   vtkDoubleArray* coordArrays[3];
@@ -1491,7 +1496,7 @@ void vtkNetCDFCFReader::Add1DSphericalCoordinates(vtkPoints* points, const int e
 void vtkNetCDFCFReader::Add2DSphericalCoordinates(vtkPoints* points, const int extent[6])
 {
   points->SetDataTypeToDouble();
-  points->Allocate(
+  points->Reserve(
     (extent[1] - extent[0] + 1) * (extent[3] - extent[2] + 1) * (extent[5] - extent[4] + 1));
 
   vtkDependentDimensionInfo* info = this->FindDependentDimensionInfo(this->LoadingDimensions);
@@ -1706,7 +1711,7 @@ void vtkNetCDFCFReader::AddUnstructuredRectilinearCoordinates(
 
   VTK_CREATE(vtkPoints, points);
   points->SetDataTypeToDouble();
-  points->Allocate(totalNumCells);
+  points->Reserve(totalNumCells);
 
   VTK_CREATE(vtkMergePoints, locator);
   locator->InitPointInsertion(points, bounds);
@@ -1876,9 +1881,33 @@ int vtkNetCDFCFReader::IsTimeDimension(int vtkNotUsed(ncFD), int dimId)
 }
 
 //------------------------------------------------------------------------------
-vtkSmartPointer<vtkDoubleArray> vtkNetCDFCFReader::GetTimeValues(int vtkNotUsed(ncFD), int dimId)
+vtkSmartPointer<vtkDoubleArray> vtkNetCDFCFReader::GetTimeValues(int ncFD, int dimId)
 {
-  return this->GetDimensionInfo(dimId)->GetCoordinates();
+  vtkSmartPointer<vtkDoubleArray> coords = this->GetDimensionInfo(dimId)->GetCoordinates();
+
+  double fillValue = NC_FILL_DOUBLE;
+  int varId;
+  if (this->Accessor->inq_varid(ncFD, this->GetDimensionInfo(dimId)->GetName(), &varId) == NC_NOERR)
+  {
+    this->Accessor->get_att_double(ncFD, varId, "_FillValue", &fillValue);
+  }
+
+  vtkSmartPointer<vtkDoubleArray> filtered = vtkSmartPointer<vtkDoubleArray>::New();
+  filtered->SetNumberOfComponents(1);
+  bool hasFill = false;
+  for (vtkIdType i = 0; i < coords->GetNumberOfTuples(); i++)
+  {
+    double v = coords->GetValue(i);
+    if (v == fillValue)
+    {
+      hasFill = true;
+    }
+    else
+    {
+      filtered->InsertNextValue(v);
+    }
+  }
+  return hasFill ? filtered : coords;
 }
 
 //------------------------------------------------------------------------------

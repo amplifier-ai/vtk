@@ -124,7 +124,7 @@ class select_ports(object):
         This is to handle sequence >> select_ports where the port can
         accept multiple connections."""
         from collections.abc import Sequence
-        if lhs is None or (isinstance(lhs, Sequence) and len(lhs == 0)):
+        if lhs is None or (isinstance(lhs, Sequence) and len(lhs) == 0):
             self.algorithm.RemoveAllInputConnections(self.input_port)
             return self
         return Pipeline(lhs, self)
@@ -219,6 +219,33 @@ class Pipeline(object):
         if hasattr(arg, "IsA") and arg.IsA("vtkDataObject"):
             return Pipeline.DATA
         return Pipeline.UNKNOWN
+
+    def __getitem__(self, name):
+        """Find an algorithm in the pipeline by its object_name.
+
+        Traverses the full pipeline graph from last to first, following
+        all input ports and all connections per port. Returns the first
+        algorithm whose ``GetObjectName()`` matches *name*.
+
+        Raises KeyError if no match is found.
+        """
+        from collections import deque
+        visited = set()
+        queue = deque([self.last])
+        while queue:
+            alg = queue.popleft()
+            alg_id = id(alg)
+            if alg_id in visited:
+                continue
+            visited.add(alg_id)
+            if alg.GetObjectName() == name:
+                return alg
+            for port in range(alg.GetNumberOfInputPorts()):
+                for conn in range(alg.GetNumberOfInputConnections(port)):
+                    producer = alg.GetInputConnection(port, conn).GetProducer()
+                    if producer is not None:
+                        queue.append(producer)
+        raise KeyError(name)
 
     def update(self, **kwargs):
         """Update the pipeline and return the last algorithm's

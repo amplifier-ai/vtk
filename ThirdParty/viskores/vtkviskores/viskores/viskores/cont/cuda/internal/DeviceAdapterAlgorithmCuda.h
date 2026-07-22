@@ -57,7 +57,9 @@ VISKORES_THIRDPARTY_PRE_INCLUDE
 #include <thrust/binary_search.h>
 #include <thrust/copy.h>
 #include <thrust/count.h>
+#include <thrust/distance.h>
 #include <thrust/iterator/counting_iterator.h>
+#include <thrust/pair.h>
 #include <thrust/scan.h>
 #include <thrust/sort.h>
 #include <thrust/system/cpp/memory.h>
@@ -455,7 +457,8 @@ private:
                                        cuda::internal::IteratorBegin(stencil),
                                        outputBegin,
                                        up);
-      return static_cast<viskores::Id>(::thrust::distance(outputBegin, newLast));
+      return static_cast<viskores::Id>(
+        viskores::exec::cuda::internal::ThrustDistance(outputBegin, newLast));
     }
     catch (...)
     {
@@ -596,7 +599,8 @@ private:
                                               const OutputPortal& output)
   {
     using ValueType = typename ValuesPortal::ValueType;
-    LowerBoundsPortal(input, values, output, ::thrust::less<ValueType>());
+    LowerBoundsPortal(
+      input, values, output, viskores::exec::cuda::internal::ThrustLess<ValueType>());
   }
 
   template <class InputPortal, class OutputPortal>
@@ -604,7 +608,8 @@ private:
                                               const OutputPortal& values_output)
   {
     using ValueType = typename InputPortal::ValueType;
-    LowerBoundsPortal(input, values_output, values_output, ::thrust::less<ValueType>());
+    LowerBoundsPortal(
+      input, values_output, values_output, viskores::exec::cuda::internal::ThrustLess<ValueType>());
   }
 
   template <class InputPortal, class ValuesPortal, class OutputPortal, class BinaryCompare>
@@ -636,7 +641,7 @@ private:
   template <class InputPortal, typename T>
   VISKORES_CONT static T ReducePortal(const InputPortal& input, T initialValue)
   {
-    return ReducePortal(input, initialValue, ::thrust::plus<T>());
+    return ReducePortal(input, initialValue, viskores::exec::cuda::internal::ThrustPlus<T>());
   }
 
   template <class InputPortal, typename T, class BinaryFunctor>
@@ -720,7 +725,7 @@ private:
 
     ::thrust::pair<decltype(keys_out_begin), decltype(values_out_begin)> result_iterators;
 
-    ::thrust::equal_to<typename KeysPortal::ValueType> binaryPredicate;
+    viskores::exec::cuda::internal::ThrustEqualTo<typename KeysPortal::ValueType> binaryPredicate;
 
     using ValueType = typename ValuesPortal::ValueType;
     viskores::exec::cuda::internal::WrappedBinaryOperator<ValueType, BinaryFunctor> bop(
@@ -742,7 +747,8 @@ private:
       cuda::internal::throwAsViskoresException();
     }
 
-    return static_cast<viskores::Id>(::thrust::distance(keys_out_begin, result_iterators.first));
+    return static_cast<viskores::Id>(
+      viskores::exec::cuda::internal::ThrustDistance(keys_out_begin, result_iterators.first));
   }
 
   template <class InputPortal, class OutputPortal>
@@ -754,7 +760,7 @@ private:
 
     return ScanExclusivePortal(input,
                                output,
-                               (::thrust::plus<ValueType>()),
+                               (viskores::exec::cuda::internal::ThrustPlus<ValueType>()),
                                viskores::TypeTraits<ValueType>::ZeroInitialization());
   }
 
@@ -812,7 +818,8 @@ private:
     const OutputPortal& output)
   {
     using ValueType = typename OutputPortal::ValueType;
-    return ScanInclusivePortal(input, output, ::thrust::plus<ValueType>());
+    return ScanInclusivePortal(
+      input, output, viskores::exec::cuda::internal::ThrustPlus<ValueType>());
   }
 
   template <class InputPortal, class OutputPortal, class BinaryFunctor>
@@ -853,8 +860,11 @@ private:
   {
     using KeyType = typename KeysPortal::ValueType;
     using ValueType = typename OutputPortal::ValueType;
-    ScanInclusiveByKeyPortal(
-      keys, values, output, ::thrust::equal_to<KeyType>(), ::thrust::plus<ValueType>());
+    ScanInclusiveByKeyPortal(keys,
+                             values,
+                             output,
+                             viskores::exec::cuda::internal::ThrustEqualTo<KeyType>(),
+                             viskores::exec::cuda::internal::ThrustPlus<ValueType>());
   }
 
   template <typename KeysPortal,
@@ -902,8 +912,8 @@ private:
                              values,
                              output,
                              viskores::TypeTraits<ValueType>::ZeroInitialization(),
-                             ::thrust::equal_to<KeyType>(),
-                             ::thrust::plus<ValueType>());
+                             viskores::exec::cuda::internal::ThrustEqualTo<KeyType>(),
+                             viskores::exec::cuda::internal::ThrustPlus<ValueType>());
   }
 
   template <typename KeysPortal,
@@ -946,7 +956,7 @@ private:
   VISKORES_CONT static void SortPortal(const ValuesPortal& values)
   {
     using ValueType = typename ValuesPortal::ValueType;
-    SortPortal(values, ::thrust::less<ValueType>());
+    SortPortal(values, viskores::exec::cuda::internal::ThrustLess<ValueType>());
   }
 
   template <class ValuesPortal, class BinaryCompare>
@@ -972,7 +982,7 @@ private:
   VISKORES_CONT static void SortByKeyPortal(const KeysPortal& keys, const ValuesPortal& values)
   {
     using ValueType = typename KeysPortal::ValueType;
-    SortByKeyPortal(keys, values, ::thrust::less<ValueType>());
+    SortByKeyPortal(keys, values, viskores::exec::cuda::internal::ThrustLess<ValueType>());
   }
 
   template <class KeysPortal, class ValuesPortal, class BinaryCompare>
@@ -1005,7 +1015,8 @@ private:
       auto begin = cuda::internal::IteratorBegin(values);
       auto newLast =
         ::thrust::unique(ThrustCudaPolicyPerThread, begin, cuda::internal::IteratorEnd(values));
-      return static_cast<viskores::Id>(::thrust::distance(begin, newLast));
+      return static_cast<viskores::Id>(
+        viskores::exec::cuda::internal::ThrustDistance(begin, newLast));
     }
     catch (...)
     {
@@ -1026,7 +1037,8 @@ private:
       auto begin = cuda::internal::IteratorBegin(values);
       auto newLast = ::thrust::unique(
         ThrustCudaPolicyPerThread, begin, cuda::internal::IteratorEnd(values), bop);
-      return static_cast<viskores::Id>(::thrust::distance(begin, newLast));
+      return static_cast<viskores::Id>(
+        viskores::exec::cuda::internal::ThrustDistance(begin, newLast));
     }
     catch (...)
     {
@@ -1584,7 +1596,7 @@ public:
     ScanInclusiveByKeyPortal(keysPortal,
                              valuesPortal,
                              output.PrepareForOutput(numberOfValues, DeviceAdapterTagCuda(), token),
-                             ::thrust::equal_to<T>(),
+                             viskores::exec::cuda::internal::ThrustEqualTo<T>(),
                              binary_functor);
   }
 
@@ -1613,7 +1625,7 @@ public:
                              valuesPortal,
                              output.PrepareForOutput(numberOfValues, DeviceAdapterTagCuda(), token),
                              viskores::TypeTraits<T>::ZeroInitialization(),
-                             ::thrust::equal_to<T>(),
+                             viskores::exec::cuda::internal::ThrustEqualTo<T>(),
                              viskores::Add());
   }
 
@@ -1649,7 +1661,7 @@ public:
                              valuesPortal,
                              output.PrepareForOutput(numberOfValues, DeviceAdapterTagCuda(), token),
                              initialValue,
-                             ::thrust::equal_to<T>(),
+                             viskores::exec::cuda::internal::ThrustEqualTo<T>(),
                              binary_functor);
   }
 

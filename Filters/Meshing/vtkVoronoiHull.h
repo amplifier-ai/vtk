@@ -168,7 +168,7 @@ struct VTKFILTERSMESHING_EXPORT vtkHullFace
  * Note that after intersecting the hull with a clipping plane, the list of
  * EdgeTuple intersection points form a new face. However, the intersection
  * points must be sorted around the perimeter of the face, hence requires
- * determing the loop index which orders the points into a face loop. The
+ * determining the loop index which orders the points into a face loop. The
  * loop index is computed by defining a coordinate system from the clip plane
  * normal, and the fan of diagonals connecting the points of the face loop.
  * This can be used to create new planes that cut the loop into pieces. By
@@ -258,8 +258,40 @@ public:
     this->SortP.reserve(256);
     this->Petals = vtkSmartPointer<vtkDoubleArray>::New();
     this->Petals->SetNumberOfComponents(4); // x-y-z-R2
-    this->Petals->Allocate(256);            // initial allocation
+    this->Petals->ReserveValues(256);       // initial allocation
   }
+
+  /**
+   * vtkSMPTools require a proper operator= and copy constructor.
+   */
+  vtkVoronoiHull(const vtkVoronoiHull&)
+    : PtId(-1)
+    , X{ 0, 0, 0 }
+    , NumClips(0)
+    , PruneTolerance(1.0e-13)
+    , RecomputeCircumFlower(true)
+    , RecomputePetals(true)
+    , CircumFlower2(0.0)
+    , MinRadius2(0.0)
+    , MaxRadius2(0.0)
+  {
+    // Preallocate some space
+    this->Points.reserve(256);
+    this->Faces.reserve(256);
+    this->FacePoints.reserve(2048);
+    this->InProcessPoints.reserve(256);
+    this->InProcessFaces.reserve(256);
+    this->DeletedPoints.Reserve(256);
+    this->DeletedFaces.Reserve(256);
+
+    // Each tile owns its own vtkDoubleArray
+    this->SortP.reserve(256);
+    this->Petals = vtkSmartPointer<vtkDoubleArray>::New();
+    this->Petals->SetNumberOfComponents(4); // x-y-z-R2
+    this->Petals->ReserveTuples(256);       // initial allocation
+  }
+
+  vtkVoronoiHull& operator=(const vtkVoronoiHull&) { return *this; }
 
   /**
    * Method to initiate the construction of the polyhedron. Define the

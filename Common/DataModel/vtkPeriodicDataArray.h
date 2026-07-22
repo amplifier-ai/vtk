@@ -147,12 +147,7 @@ public:
   /**
    * Read only container, not supported.
    */
-  vtkTypeBool Allocate(vtkIdType sz, vtkIdType ext) override;
-
-  /**
-   * Read only container, not supported.
-   */
-  vtkTypeBool Resize(vtkIdType numTuples) override;
+  vtkTypeBool ReserveTuples(vtkIdType numTuples) override;
 
   /**
    * Read only container, not supported.
@@ -266,11 +261,6 @@ public:
   /**
    * Read only container, not supported.
    */
-  void RemoveLastTuple() override;
-
-  /**
-   * Read only container, not supported.
-   */
   void SetTypedTuple(vtkIdType i, const Scalar* t);
 
   /**
@@ -319,7 +309,6 @@ protected:
   /**
    * Read only container, not supported.
    */
-  bool AllocateTuples(vtkIdType numTuples);
   bool ReallocateTuples(vtkIdType numTuples);
   ///@}
 

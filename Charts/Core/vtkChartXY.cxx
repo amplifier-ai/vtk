@@ -2358,7 +2358,7 @@ bool vtkChartXY::MouseButtonReleaseEvent(const vtkContextMouseEvent& mouse)
                 int columnID = plot->GetInput()->GetColumnIndex(column->GetName());
                 if (plotSelection->GetNumberOfTuples() != column->GetNumberOfTuples())
                 {
-                  plotSelection->SetNumberOfTuples(0);
+                  plotSelection->Initialize();
                   for (vtkIdType k = 0; k < column->GetNumberOfTuples(); ++k)
                   {
                     plotSelection->InsertNextValue(k);
@@ -2884,14 +2884,6 @@ void vtkChartXY::BuildSelection(
       // Nothing necessary - overwrite the old selection.
       break;
   }
-}
-
-//------------------------------------------------------------------------------
-// VTK_DEPRECATED_IN_9_6_0
-//------------------------------------------------------------------------------
-int vtkChartXY::GetMouseSelectionMode(const vtkContextMouseEvent& mouse, int selectionMode)
-{
-  return vtkChart::GetSelectionModeFromMouseModifiers(mouse, selectionMode);
 }
 
 VTK_ABI_NAMESPACE_END

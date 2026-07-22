@@ -52,6 +52,7 @@ typedef enum parse_attribute_t_
   VTK_ATTRIB_MARSHALGETTER,  /* [[vtk::marshalgetter]]  */
   VTK_ATTRIB_MARSHALSETTER,  /* [[vtk::marshalsetter]]  */
   VTK_ATTRIB_PROPEXCLUDE,    /* [[vtk::propexclude]]    */
+  VTK_ATTRIB_MAYSUSPEND,     /* [[vtk::maysuspend]]     */
 } parse_attribute_t;
 
 /* Map attribute names to attribute enum constants */
@@ -74,6 +75,7 @@ static const struct
   { "vtk::marshalgetter", VTK_ATTRIB_MARSHALGETTER },
   { "vtk::marshalsetter", VTK_ATTRIB_MARSHALSETTER },
   { "vtk::propexclude", VTK_ATTRIB_PROPEXCLUDE },
+  { "vtk::maysuspend", VTK_ATTRIB_MAYSUSPEND },
   { NULL, VTK_ATTRIB_NONE },
 };
 
@@ -294,6 +296,11 @@ static parse_attribute_return_t handle_function_attribute(
       func->IsUnblockThreads = 1;
       return VTK_ATTRIB_HANDLER_NO_ARGS;
     }
+    case VTK_ATTRIB_MAYSUSPEND:
+    {
+      func->IsMaySuspend = 1;
+      return VTK_ATTRIB_HANDLER_NO_ARGS;
+    }
     default:
     {
       return VTK_ATTRIB_HANDLER_SKIPPED;
@@ -466,12 +473,10 @@ static parse_attribute_t split_attribute(
   const char* attr, const char** argp, PreprocessInfo* preprocessor)
 {
   parse_attribute_t attrId;
-  size_t l = 0;
-  size_t la = 0;
   const char* args = NULL;
 
   /* get the attribute's enum value */
-  l = vtkParse_SkipId(attr);
+  size_t l = vtkParse_SkipId(attr);
   while (attr[l] == ':' && attr[l + 1] == ':')
   {
     l += 2;
@@ -488,7 +493,7 @@ static parse_attribute_t split_attribute(
     {
       args++;
     }
-    la = strlen(args);
+    size_t la = strlen(args);
     while (la > 0 && args[la - 1] == ' ')
     {
       la--;

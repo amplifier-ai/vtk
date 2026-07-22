@@ -156,9 +156,9 @@ int vtkConnectedPointsFilter::RequestData(vtkInformation* vtkNotUsed(request),
   // plane
   vtkIdType ptId;
   this->Wave = vtkIdList::New();
-  this->Wave->Allocate(numPts / 4 + 1, numPts);
+  this->Wave->Reserve(numPts / 4 + 1);
   this->Wave2 = vtkIdList::New();
-  this->Wave2->Allocate(numPts / 4 + 1, numPts);
+  this->Wave2->Reserve(numPts / 4 + 1);
 
   // Traverse all points, and label all points
   if (this->ExtractionMode == VTK_EXTRACT_ALL_REGIONS ||
@@ -369,8 +369,8 @@ void vtkConnectedPointsFilter::TraverseAndMark(
             wave2->InsertNextId(neiId);
           }
         } // if point not yet visited
-      }   // for all neighbors
-    }     // for all cells in this wave
+      } // for all neighbors
+    } // for all cells in this wave
 
     tmpWave = wave;
     wave = wave2;

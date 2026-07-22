@@ -1,5 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
 // SPDX-License-Identifier: BSD-3-Clause
+// Hide VTK_DEPRECATED_IN_9_7_0() warnings for this class.
+#define VTK_DEPRECATION_LEVEL 0
 
 // this test verifies that vtkFastLabelDataMapper works as expected
 
@@ -35,7 +37,7 @@
 #include "vtkTextActor.h"
 #include "vtkTextProperty.h"
 #include "vtkTransform.h"
-#include "vtkTransformPolyDataFilter.h"
+#include "vtkTransformFilter.h"
 #include "vtkTrivialProducer.h"
 
 #include <array>
@@ -47,7 +49,7 @@ struct TestContextData
 {
   // Fast Labels
   vtkNew<vtkPlaneSource> plane;
-  vtkNew<vtkTransformPolyDataFilter> xform;
+  vtkNew<vtkTransformFilter> xform;
   vtkNew<vtkTransform> matrix;
   vtkNew<vtkGenerateIds> ids;
   vtkNew<vtkFastLabeledDataMapper> labelMapper;

@@ -91,6 +91,9 @@ timer.StopTimer()
 time = timer.GetElapsedTime()
 print("Time to generate Surface Net: {0}".format(time))
 
+# Verify point count is stable after non-manifold correction.
+assert snets.GetOutput().GetNumberOfPoints() == 64800
+
 w = vtk.vtkPolyDataWriter()
 w.SetInputConnection(snets.GetOutputPort())
 w.SetFileName("out.vtk")
@@ -122,19 +125,25 @@ snets2.GenerateLabels(numBlobs, 1, numBlobs)
 snets2.GetSmoother().SetNumberOfIterations(50)
 snets2.GetSmoother().SetRelaxationFactor(0.5)
 snets2.GetSmoother().SetConstraintDistance(1)
-snets2.SetOutputMeshTypeToQuads()
 snets2.SetOutputMeshTypeToTriangles()
-snets2.SetOutputStyleToBoundary()
 
 timer = vtk.vtkTimerLog()
 timer.StartTimer()
 snets2.Update()
+atlas = vtk.vtkSurfaceNetsAtlas()
+atlas.SetInputConnection(snets2.GetOutputPort())
+atlas.SetOutputStyleToBoundary()
+atlas.GeneratePatchesOff()
+atlas.Update()
 timer.StopTimer()
 time = timer.GetElapsedTime()
 print("Time to generate smoothed Surface Net: {0}".format(time))
 
-mapper2 = vtk.vtkPolyDataMapper()
-mapper2.SetInputConnection(snets2.GetOutputPort())
+# Smoothing preserves point count
+assert snets2.GetOutput().GetNumberOfPoints() == 64800
+
+mapper2 = vtk.vtkCompositePolyDataMapper()
+mapper2.SetInputConnection(atlas.GetOutputPort())
 mapper2.SetLookupTable(lut)
 mapper2.SetScalarRange(0, lut.GetNumberOfColors())
 

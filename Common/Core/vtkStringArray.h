@@ -64,11 +64,6 @@ public:
   int IsNumeric() const override { return 0; }
 
   /**
-   * Release storage and reset array to initial state.
-   */
-  void Initialize() override;
-
-  /**
    * Copy one component from \a src into a (potentially different) component
    * of this array. Note that \a src must be a vtkStringArray.
    */
@@ -86,12 +81,7 @@ public:
    * Free any unnecessary memory.
    * Resize object to just fit data requirement. Reclaims extra memory.
    */
-  void Squeeze() override { this->Resize(this->GetNumberOfTuples()); }
-
-  /**
-   * Resize the array while conserving the data.
-   */
-  vtkTypeBool Resize(vtkIdType numTuples) override;
+  void Squeeze() override;
 
   /**
    * Set the tuple at the ith location using the jth tuple in the source array.
@@ -171,10 +161,16 @@ public:
   void GetTuples(vtkIdType p1, vtkIdType p2, vtkAbstractArray* output) override;
 
   /**
-   * Allocate memory for this array. Delete old storage only if necessary.
-   * Note that ext is no longer used.
+   * Reserve the array to the requested number of tuples and preserve data.
+   *
+   * Increasing the array capacity may allocate extra memory beyond what was
+   * requested. MaxId will not be modified when increasing array size.
+   *
+   * Decreasing the array capacity is effectively a no-op.
+   *
+   * Returns 1 if resizing succeeded and 0 otherwise.
    */
-  vtkTypeBool Allocate(vtkIdType sz, vtkIdType ext = 1000) override;
+  vtkTypeBool ReserveTuples(vtkIdType numTuples) override;
 
   /**
    * Get component @a comp of the tuple at @a tupleIdx.
@@ -232,15 +228,6 @@ public:
 
   void SetValue(vtkIdType id, const char* value)
     VTK_EXPECTS(0 <= id && id < this->GetNumberOfValues()) VTK_EXPECTS(value != nullptr);
-
-  /**
-   * Set the number of tuples (a component group) in the array. Note that
-   * this may allocate space depending on the number of components.
-   */
-  void SetNumberOfTuples(vtkIdType number) override
-  {
-    this->SetNumberOfValues(this->NumberOfComponents * number);
-  }
 
   VTK_DEPRECATED_IN_9_7_0("No longer needed")
   int GetNumberOfElementComponents() { return 0; }
@@ -416,12 +403,6 @@ protected:
   ~vtkStringArray() override;
 
   /**
-   * Allocate space for numTuples. Old data is not preserved. If numTuples == 0,
-   * all data is freed.
-   */
-  bool AllocateTuples(vtkIdType numTuples);
-
-  /**
    * Allocate space for numTuples. Old data is preserved. If numTuples == 0, all data is freed.
    */
   bool ReallocateTuples(vtkIdType numTuples);
@@ -436,10 +417,10 @@ protected:
   /**
    * Function to resize data
    */
-  VTK_DEPRECATED_IN_9_7_0("Use Resize")
+  VTK_DEPRECATED_IN_9_7_0("Use ReserveTuples")
   ValueType* ResizeAndExtend(vtkIdType sz)
   {
-    this->Resize(sz);
+    this->ReserveTuples(sz);
     return this->Buffer->GetBuffer();
   }
 

@@ -20,6 +20,8 @@
 #include "vtkExplicitStructuredGrid.h"
 #include "vtkExtractEdges.h"
 #include "vtkFieldData.h"
+#include "vtkHDFReader.h"
+#include "vtkHDFWriter.h"
 #include "vtkHyperTreeGrid.h"
 #include "vtkHyperTreeGridCellCenters.h"
 #include "vtkHyperTreeGridNonOrientedGeometryCursor.h"
@@ -48,6 +50,8 @@
 #include "vtkUnsignedCharArray.h"
 #include "vtkUnstructuredGrid.h"
 #include "vtkVariantArray.h"
+
+#include "vtksys/SystemTools.hxx"
 
 #include <array>
 #include <atomic>
@@ -617,10 +621,24 @@ const char* GetArrayName(vtkAbstractArray* array)
 //----------------------------------------------------------------------------
 bool ArrayErrorHandler(vtkAbstractArray* array1, vtkAbstractArray* array2)
 {
-  if (!array1 || !array2)
+  if (!array1 && array2)
   {
-    vtkLog(ERROR, "Unexpected nullptr array pointer.");
+    vtkLog(ERROR,
+      "Unexpected nullptr array pointer in first operand when comparing to array \" "
+        << array2->GetName() << "\"");
     return false;
+  }
+  if (array1 && !array2)
+  {
+    vtkLog(ERROR,
+      "Unexpected nullptr array pointer in second operand when comparing array named \""
+        << array1->GetName() << "\"");
+    return false;
+  }
+  if (!array1 && !array2)
+  {
+    vtkLog(WARNING, "Both arrays are nullptr. Considering them identical.");
+    return true;
   }
 
   if (array1->GetNumberOfComponents() != array2->GetNumberOfComponents())
@@ -1617,7 +1635,7 @@ bool CheckTreeEqual(vtkHyperTreeGridNonOrientedGeometryCursor* cursor1,
     int ncomps = array1->GetNumberOfComponents();
     if (ncomps != array2->GetNumberOfComponents())
     {
-      vtkLog(ERROR, "Mismatched number of composants in array " << array1->GetName());
+      vtkLog(ERROR, "Mismatched number of components in array " << array1->GetName());
       return false;
     }
     double* tuple1 = array1->GetTuple(currentId1);
@@ -1757,6 +1775,24 @@ struct TestDataObjectsImpl<vtkHyperTreeGrid>
     {
       vtkLog(
         ERROR, "Transposed Root Indexing value doesn't match between the 2 input vtkHyperTreeGrid");
+      return false;
+    }
+
+    if (!vtkTestUtilities::CompareAbstractArray(htg1->GetXCoordinates(), htg2->GetXCoordinates()))
+    {
+      vtkLog(ERROR, "X Coordinates don't match between the 2 input HyperTreeGrid");
+      return false;
+    }
+
+    if (!vtkTestUtilities::CompareAbstractArray(htg1->GetYCoordinates(), htg2->GetYCoordinates()))
+    {
+      vtkLog(ERROR, "Y Coordinates don't match between the 2 input HyperTreeGrid");
+      return false;
+    }
+
+    if (!vtkTestUtilities::CompareAbstractArray(htg1->GetZCoordinates(), htg2->GetZCoordinates()))
+    {
+      vtkLog(ERROR, "Z Coordinates don't match between the 2 input HyperTreeGrid");
       return false;
     }
 
@@ -2024,7 +2060,8 @@ bool DispatchDataObjectImpl(
       return true;
     }
     vtkLog(ERROR,
-      "Input dataset types do not match: " << do1->GetClassName() << " != " << do2->GetClassName());
+      "Input composite data types do not match: " << do1->GetClassName()
+                                                  << " != " << do2->GetClassName());
   }
   else if (auto pdc1 = vtkPartitionedDataSetCollection::SafeDownCast(do1))
   {
@@ -2034,7 +2071,8 @@ bool DispatchDataObjectImpl(
       return true;
     }
     vtkLog(ERROR,
-      "Input dataset types do not match: " << do1->GetClassName() << " != " << do2->GetClassName());
+      "Input composite data types do not match: " << do1->GetClassName()
+                                                  << " != " << do2->GetClassName());
   }
   else if (auto mb1 = vtkMultiBlockDataSet::SafeDownCast(do1))
   {
@@ -2044,7 +2082,8 @@ bool DispatchDataObjectImpl(
       return true;
     }
     vtkLog(ERROR,
-      "Input dataset types do not match: " << do1->GetClassName() << " != " << do2->GetClassName());
+      "Input composite data types do not match: " << do1->GetClassName()
+                                                  << " != " << do2->GetClassName());
   }
 
   vtkLog(ERROR, << "Only vtkPartitionedDataSet, vtkPartitionedDataSetCollection and "
@@ -2089,16 +2128,15 @@ bool vtkTestUtilities::CompareDataObjects(
 {
   ::FixToleranceFactorIfNeeded(toleranceFactor);
 
-  if (auto cds = vtkCompositeDataSet::SafeDownCast(do1))
+  auto cds = vtkCompositeDataSet::SafeDownCast(do1);
+  auto cds2 = vtkCompositeDataSet::SafeDownCast(do2);
+  if (cds || cds2)
   {
-    if (auto cds2 = vtkCompositeDataSet::SafeDownCast(do2))
+    bool retVal = false;
+    if (::DispatchDataObjectImpl<TestDataObjectsImpl, vtkCompositeDataSet>(
+          cds, cds2, toleranceFactor, retVal))
     {
-      bool retVal = false;
-      if (::DispatchDataObjectImpl<TestDataObjectsImpl, vtkCompositeDataSet>(
-            cds, cds2, toleranceFactor, retVal))
-      {
-        return retVal;
-      }
+      return retVal;
     }
 
     return false;
@@ -2136,6 +2174,81 @@ bool vtkTestUtilities::CompareAbstractArray(vtkAbstractArray* array1, vtkAbstrac
   ::FixToleranceFactorIfNeeded(toleranceFactor);
   return ::TestAbstractArray(array1, array2, ::IdentityMapper(array1->GetNumberOfTuples()),
     toleranceFactor, ghosts, ghostsToSkip);
+}
+
+//----------------------------------------------------------------------------
+bool vtkTestUtilities::RegressionTest(int argc, char* argv[], vtkDataObject* input,
+  const std::string& dataBaselinePath, double tolerance)
+{
+  if (vtkTestUtilities::CompareWithFile(argc, argv, input, dataBaselinePath, tolerance))
+  {
+    return true;
+  }
+  /**
+   * Avoid writing too big files on disk.
+   * Deep copy will "unroll" implicit arrays, so we can effectively get an estimated size
+   * of the data to write, and skip the biggest data to limit disk impact.
+   * Arbitrary limit is 10MiB.
+   */
+  vtkSmartPointer<vtkDataObject> fullCopy = vtk::TakeSmartPointer(input->NewInstance());
+  constexpr unsigned int MAX_MEMORY_KIB = 10000;
+  fullCopy->DeepCopy(input);
+  if (fullCopy->GetActualMemorySize() > MAX_MEMORY_KIB)
+  {
+    vtkLog(WARNING,
+      "Data too big, skip write step.\nComparison failed but input data is more than "
+        << MAX_MEMORY_KIB << " KiB. (Estimated at " << fullCopy->GetActualMemorySize() << "KiB )");
+    return false;
+  }
+
+  auto dataBaselineName = vtksys::SystemTools::GetFilenameName(dataBaselinePath);
+  std::string tmpFilePath = vtkTestUtilities::GetTemporaryDir(argc, argv);
+  tmpFilePath += "/" + dataBaselineName;
+
+  vtkLog(INFO, "Write temporary file at " << tmpFilePath);
+  vtkNew<vtkHDFWriter> writer;
+  writer->SetFileName(tmpFilePath.c_str());
+  writer->SetInputData(fullCopy);
+  // again, in testing we are expecting small datasets. So let's have small chunks.
+  writer->SetChunkSize(250);
+  writer->Write();
+
+  return false;
+}
+
+//----------------------------------------------------------------------------
+bool vtkTestUtilities::CompareWithFile(int argc, char* argv[], vtkDataObject* input,
+  const std::string& dataBaselinePath, double tolerance)
+{
+  std::string dataRoot = vtkTestUtilities::GetDataRoot(argc, argv);
+  const std::string dataBaselineFullPath = dataRoot + dataBaselinePath;
+
+  return vtkTestUtilities::CompareWithFile(input, dataBaselineFullPath, tolerance);
+}
+
+//----------------------------------------------------------------------------
+bool vtkTestUtilities::CompareWithFile(
+  vtkDataObject* input, const std::string& dataBaselineFullPath, double tolerance)
+{
+  vtkNew<vtkHDFReader> reader;
+  vtkLog(INFO, "Trying to load data baseline file at " << dataBaselineFullPath);
+  if (vtksys::SystemTools::FileExists(dataBaselineFullPath, true) &&
+    reader->CanReadFile(dataBaselineFullPath.c_str()))
+  {
+    reader->SetFileName(dataBaselineFullPath.c_str());
+    reader->Update();
+    auto dataObjectBaseline = reader->GetOutput();
+    if (vtkTestUtilities::CompareDataObjects(input, dataObjectBaseline, tolerance))
+    {
+      return true;
+    }
+  }
+  else
+  {
+    vtkLog(ERROR, "Cannot read VTKHDF file at \"" << dataBaselineFullPath << "\".");
+  }
+
+  return false;
 }
 
 VTK_ABI_NAMESPACE_END

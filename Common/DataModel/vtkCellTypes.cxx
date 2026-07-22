@@ -9,18 +9,6 @@ VTK_ABI_NAMESPACE_BEGIN
 vtkStandardNewMacro(vtkCellTypes);
 
 //------------------------------------------------------------------------------
-const char* vtkCellTypes::GetClassNameFromTypeId(int type)
-{
-  return vtkCellTypeUtilities::GetClassNameFromTypeId(type);
-}
-
-//------------------------------------------------------------------------------
-int vtkCellTypes::GetTypeIdFromClassName(const char* classname)
-{
-  return vtkCellTypeUtilities::GetTypeIdFromClassName(classname);
-}
-
-//------------------------------------------------------------------------------
 vtkCellTypes::vtkCellTypes()
   : TypeArray(vtkSmartPointer<vtkUnsignedCharArray>::New())
   , MaxId(-1)
@@ -28,7 +16,7 @@ vtkCellTypes::vtkCellTypes()
 }
 
 //------------------------------------------------------------------------------
-int vtkCellTypes::Allocate(vtkIdType sz, vtkIdType ext)
+int vtkCellTypes::Allocate(vtkIdType sz, vtkIdType vtkNotUsed(ext))
 {
   this->MaxId = -1;
 
@@ -36,16 +24,10 @@ int vtkCellTypes::Allocate(vtkIdType sz, vtkIdType ext)
   {
     this->TypeArray = vtkSmartPointer<vtkUnsignedCharArray>::New();
   }
-  this->TypeArray->Allocate(sz, ext);
+  this->TypeArray->Initialize();
+  this->TypeArray->ReserveValues(sz);
 
   return 1;
-}
-
-//------------------------------------------------------------------------------
-// VTK_DEPRECATED_IN_9_6_0
-void vtkCellTypes::InsertCell(vtkIdType id, unsigned char type, vtkIdType)
-{
-  this->InsertCell(id, type);
 }
 
 //------------------------------------------------------------------------------
@@ -56,13 +38,6 @@ void vtkCellTypes::InsertCell(vtkIdType cellId, unsigned char type)
   TypeArray->InsertValue(cellId, type);
 
   this->MaxId = std::max(cellId, this->MaxId);
-}
-
-//------------------------------------------------------------------------------
-// VTK_DEPRECATED_IN_9_6_0
-vtkIdType vtkCellTypes::InsertNextCell(unsigned char type, vtkIdType)
-{
-  return this->InsertNextCell(type);
 }
 
 //------------------------------------------------------------------------------
@@ -80,12 +55,6 @@ void vtkCellTypes::SetCellTypes(vtkIdType ncells, vtkUnsignedCharArray* cellType
 {
   this->TypeArray = cellTypes;
   this->MaxId = ncells - 1;
-}
-
-//------------------------------------------------------------------------------
-int vtkCellTypes::GetDimension(unsigned char type)
-{
-  return vtkCellTypeUtilities::GetDimension(type);
 }
 
 //------------------------------------------------------------------------------

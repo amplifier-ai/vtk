@@ -169,6 +169,20 @@ public:
   bool ResetCamera(vtkTypeUInt32 object);
 
   /**
+   * @brief Start WebXR Session
+   * @param mode 0: inline, 1: VR or 2: AR
+   * @param requiredFeatures Required session features (bitmask of WEBXR_SESSION_FEATURE_*)
+   * @param optionalFeatures Optional session features (bitmask of WEBXR_SESSION_FEATURE_*)
+   */
+  bool StartWebXR(
+    vtkTypeUInt8 mode, vtkTypeUInt32 requiredFeatures, vtkTypeUInt32 optionalFeatures);
+
+  /**
+   * @brief Stop the current WebXR Session
+   */
+  bool StopWebXR();
+
+  /**
    * @brief Starts an event loop for a VTK object.
    * @param object The handle of the VTK object.
    * @return True if the event loop was successfully started, false otherwise.
@@ -207,6 +221,18 @@ public:
    * @return True if the observer was successfully removed, false otherwise.
    */
   bool UnObserve(vtkTypeUInt32 object, unsigned long tag);
+
+  /**
+   * @brief Remove all observers from a specific object.
+   * @param object The handle of the VTK object.
+   * @return True if all observers were successfully removed, false otherwise.
+   */
+  bool UnObserveAll(vtkTypeUInt32 object);
+
+  /**
+   * @brief Remove all observers from all objects in the session.
+   */
+  void UnObserveAllObjects();
 
   /**
    * @brief Exports states into `fileName.states.json` and blobs into
@@ -263,6 +289,13 @@ public:
    * @return The total memory usage in bytes.
    */
   std::size_t GetTotalVTKDataObjectMemoryUsage();
+
+  /**
+   * @brief Prints information about a VTK object to a string.
+   * @param object The identifier of the VTK object.
+   * @return A string containing the result of vtkObject::Print() for the specified object.
+   */
+  std::string PrintObjectToString(vtkTypeUInt32 object);
 
   /**
    * @brief Prints information about the scene manager.

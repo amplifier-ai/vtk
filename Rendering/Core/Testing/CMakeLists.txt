@@ -9,10 +9,18 @@ vtk_module_test_data(
   Data/chombo3d/,REGEX:.*
   Data/combq.bin
   Data/combxyz.bin
+  Data/dragon.ply
   Data/earth.ppm
   Data/mb_with_pieces/,REGEX:.*\.vtu
   Data/mb_with_pieces.vtm
   Data/quadraticTetra01.vtu
+  Data/skybox-nx.jpg
+  Data/skybox-ny.jpg
+  Data/skybox-nz.jpg
+  Data/skybox-px.jpg
+  Data/skybox-py.jpg
+  Data/skybox-pz.jpg
+  Data/spiaggia_di_mondello_1k.hdr
   Data/textureRGBA.png)
 
 if (NOT vtk_testing_cxx_disabled)

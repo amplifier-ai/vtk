@@ -257,7 +257,7 @@ int vtkQuadRotationalExtrusionFilter::RequestData(vtkInformation* vtkNotUsed(req
       outPD->CopyNormalsOff();
       outPD->CopyAllocate(pd, (this->Resolution + 1) * numPts);
       newPts = vtkPoints::New();
-      newPts->Allocate((this->Resolution + 1) * numPts);
+      newPts->Reserve((this->Resolution + 1) * numPts);
       if ((ncells = inVerts->GetNumberOfCells()) > 0)
       {
         newLines = vtkCellArray::New();
@@ -315,8 +315,8 @@ int vtkQuadRotationalExtrusionFilter::RequestData(vtkInformation* vtkNotUsed(req
               outCD->CopyData(cd, cellId, newCellId++);
             }
           } // if a vertex or polyVertex
-        }   // for all cells
-      }     // if there are verts generating lines
+        } // for all cells
+      } // if there are verts generating lines
       this->UpdateProgress(0.25);
       abort = this->CheckAbort();
 
@@ -393,7 +393,7 @@ int vtkQuadRotationalExtrusionFilter::RequestData(vtkInformation* vtkNotUsed(req
         inStrips->GetNumberOfCells())
       {
         cellIds = vtkIdList::New();
-        cellIds->Allocate(VTK_CELL_SIZE);
+        cellIds->Reserve(VTK_CELL_SIZE);
         vtkGenericCell* cell = vtkGenericCell::New();
 
         for (vtkIdType cellId = 0; cellId < numCells && !abort; ++cellId)
@@ -459,10 +459,10 @@ int vtkQuadRotationalExtrusionFilter::RequestData(vtkInformation* vtkNotUsed(req
                     outCD->CopyData(cd, cellId, newCellId++);
                   }
                 } // if boundary edge
-              }   // for each sub-edge
-            }     // for each edge
-          }       // for each polygon or triangle strip
-        }         // for all cells
+              } // for each sub-edge
+            } // for each edge
+          } // for each polygon or triangle strip
+        } // for all cells
 
         cellIds->Delete();
         cell->Delete();

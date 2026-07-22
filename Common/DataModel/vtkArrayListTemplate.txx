@@ -148,7 +148,7 @@ inline void ArrayList::AddArrays(vtkIdType numOutPts, vtkDataSetAttributes* inPD
               vtkStdString(vtk::to_string(nullValue)));
           }
         }
-      }    // if matching types
+      } // if matching types
       else // promoted type
       {
         if (!vtkArrayDispatch::Dispatch::Execute(iArray, creator,
@@ -178,7 +178,7 @@ inline void ArrayList::AddSelfInterpolatingArrays(
     vtkAbstractArray* iArray = attr->GetArray(i);
     if (iArray && !this->IsExcluded(iArray))
     {
-      iArray->Resize(numOutPts);
+      iArray->ReserveTuples(numOutPts);
       ArrayPairCreator creator;
       if (!vtkArrayDispatch::Dispatch2SameValueType::Execute(
             iArray, iArray, creator, this, numOutPts, iArray->GetNumberOfComponents(), nullValue))
@@ -195,7 +195,7 @@ inline void ArrayList::AddSelfInterpolatingArrays(
         }
       }
     } // if not excluded
-  }   // for each candidate array
+  } // for each candidate array
 }
 
 VTK_ABI_NAMESPACE_END

@@ -84,12 +84,12 @@ int vtkEdgePoints::RequestData(vtkInformation* vtkNotUsed(request),
   estimatedSize = std::max<vtkIdType>(estimatedSize, 1024);
 
   newPts = vtkPoints::New();
-  newPts->Allocate(estimatedSize, estimatedSize / 2);
+  newPts->Reserve(estimatedSize);
   newVerts = vtkCellArray::New();
   newVerts->AllocateEstimate(estimatedSize, 1);
   cellScalars = inScalars->NewInstance();
   cellScalars->SetNumberOfComponents(inScalars->GetNumberOfComponents());
-  cellScalars->Allocate(VTK_CELL_SIZE * inScalars->GetNumberOfComponents());
+  cellScalars->ReserveTuples(VTK_CELL_SIZE);
 
   this->Locator->InitPointInsertion(newPts, input->GetBounds());
 
@@ -184,11 +184,11 @@ int vtkEdgePoints::RequestData(vtkInformation* vtkNotUsed(request),
               p2 = edge->PointIds->GetId(e1);
               outPd->InterpolateEdge(inPd, pts[0], p1, p2, t);
             } // if point not created before
-          }   // if edge straddles contour value
-        }     // for each edge
-      }       // dimension 2 and higher
-    }         // above and below
-  }           // for all cells
+          } // if edge straddles contour value
+        } // for each edge
+      } // dimension 2 and higher
+    } // above and below
+  } // for all cells
   cell->Delete();
 
   vtkDebugMacro(<< "Created: " << newPts->GetNumberOfPoints() << " points");

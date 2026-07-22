@@ -65,7 +65,7 @@ struct SignedDistanceFunctor
   void Initialize()
   {
     vtkIdList*& pIds = this->PIds.Local();
-    pIds->Allocate(128); // allocate some memory
+    pIds->Reserve(128); // allocate some memory
   }
 
   // Threaded interpolation method
@@ -111,9 +111,9 @@ struct SignedDistanceFunctor
             }
             this->Scalars[ptId] = dist / static_cast<double>(numPts);
           } // if nearby points
-        }   // over i
-      }     // over j
-    }       // over slices
+        } // over i
+      } // over j
+    } // over slices
   }
 
   void Reduce() {}

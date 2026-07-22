@@ -5,9 +5,7 @@
 #define vtkScaledSOADataArrayTemplate_txx
 
 #ifdef VTK_SCALED_SOA_DATA_ARRAY_TEMPLATE_INSTANTIATING
-#define VTK_GDA_VALUERANGE_INSTANTIATING
 #include "vtkDataArrayPrivate.txx"
-#undef VTK_GDA_VALUERANGE_INSTANTIATING
 #endif
 
 #include "vtkScaledSOADataArrayTemplate.h"
@@ -78,7 +76,7 @@ void vtkScaledSOADataArrayTemplate<ValueType>::ShallowCopy(vtkDataArray* other)
   SelfType* o = SelfType::FastDownCast(other);
   if (o)
   {
-    this->Size = o->Size;
+    this->Capacity = o->Capacity;
     this->MaxId = o->MaxId;
     this->SetName(o->Name);
     this->SetNumberOfComponents(o->NumberOfComponents);
@@ -145,16 +143,21 @@ void vtkScaledSOADataArrayTemplate<ValueType>::InsertTuples(
   }
 
   vtkIdType newSize = (maxDstTupleId + 1) * this->NumberOfComponents;
-  if (this->Size < newSize)
+  if (this->Capacity < newSize)
   {
-    if (!this->Resize(maxDstTupleId + 1))
+    if (!this->ReserveTuples(maxDstTupleId + 1))
     {
-      vtkErrorMacro("Resize failed.");
+      vtkErrorMacro("ReserveTuples failed.");
       return;
     }
   }
 
-  this->MaxId = std::max(this->MaxId, newSize - 1);
+  // Update the MaxId only if actually larger.
+  // NB: for thread safety, don't use std::max here because it would write unconditionally.
+  if (newSize - 1 > this->MaxId) // NOLINT(readability-use-std-min-max)
+  {
+    this->MaxId = newSize - 1;
+  }
 
   std::vector<ValueType> vals(numComps);
   for (vtkIdType i = 0; i < n; i++)
@@ -209,8 +212,8 @@ void vtkScaledSOADataArrayTemplate<ValueType>::SetArray(
 
   if (updateMaxId)
   {
-    this->Size = numComps * size;
-    this->MaxId = this->Size - 1;
+    this->Capacity = numComps * size;
+    this->MaxId = this->Capacity - 1;
   }
   this->DataChanged();
 }
@@ -290,7 +293,6 @@ bool vtkScaledSOADataArrayTemplate<ValueType>::AllocateTuples(vtkIdType numTuple
 template <class ValueType>
 bool vtkScaledSOADataArrayTemplate<ValueType>::ReallocateTuples(vtkIdType numTuples)
 {
-  bool bufferChanged = false;
   for (size_t cc = 0, max = this->Data.size(); cc < max; ++cc)
   {
     vtkIdType oldSize = this->Data[cc]->GetSize();
@@ -300,15 +302,9 @@ bool vtkScaledSOADataArrayTemplate<ValueType>::ReallocateTuples(vtkIdType numTup
       {
         return false;
       }
-      bufferChanged = true;
     }
   }
 
-  // Notify observers that the buffer may have changed
-  if (bufferChanged)
-  {
-    this->InvokeEvent(vtkCommand::BufferChangedEvent);
-  }
   return true;
 }
 

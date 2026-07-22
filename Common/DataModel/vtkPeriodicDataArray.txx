@@ -36,7 +36,7 @@ void vtkPeriodicDataArray<Scalar>::Initialize()
   }
 
   this->MaxId = -1;
-  this->Size = 0;
+  this->Capacity = 0;
   this->Normalize = false;
   this->Modified();
 }
@@ -53,7 +53,7 @@ void vtkPeriodicDataArray<Scalar>::InitializeArray(vtkAOSDataArrayTemplate<Scala
   }
 
   this->NumberOfComponents = data->GetNumberOfComponents();
-  this->Size = data->GetSize();
+  this->Capacity = data->GetCapacity();
   this->MaxId = data->GetMaxId();
   this->Data = data;
   this->Data->Register(nullptr);
@@ -439,15 +439,7 @@ unsigned long int vtkPeriodicDataArray<Scalar>::GetActualMemorySize() const
 
 //------------------------------------------------------------------------------
 template <class Scalar>
-vtkTypeBool vtkPeriodicDataArray<Scalar>::Allocate(vtkIdType, vtkIdType)
-{
-  vtkErrorMacro("Read only container.");
-  return 0;
-}
-
-//------------------------------------------------------------------------------
-template <class Scalar>
-vtkTypeBool vtkPeriodicDataArray<Scalar>::Resize(vtkIdType)
+vtkTypeBool vtkPeriodicDataArray<Scalar>::ReserveTuples(vtkIdType)
 {
   vtkErrorMacro("Read only container.");
   return 0;
@@ -607,13 +599,6 @@ void vtkPeriodicDataArray<Scalar>::RemoveFirstTuple()
 
 //------------------------------------------------------------------------------
 template <class Scalar>
-void vtkPeriodicDataArray<Scalar>::RemoveLastTuple()
-{
-  vtkErrorMacro("Read only container.");
-}
-
-//------------------------------------------------------------------------------
-template <class Scalar>
 void vtkPeriodicDataArray<Scalar>::SetTypedTuple(vtkIdType, const Scalar*)
 {
   vtkErrorMacro("Read only container.");
@@ -665,14 +650,6 @@ void vtkPeriodicDataArray<Scalar>::InsertValue(vtkIdType, Scalar)
 
 //------------------------------------------------------------------------------
 template <class Scalar>
-bool vtkPeriodicDataArray<Scalar>::AllocateTuples(vtkIdType)
-{
-  vtkErrorMacro("Read only container.");
-  return false;
-}
-
-//------------------------------------------------------------------------------
-template <class Scalar>
 bool vtkPeriodicDataArray<Scalar>::ReallocateTuples(vtkIdType)
 {
   vtkErrorMacro("Read only container.");
@@ -696,7 +673,7 @@ vtkPeriodicDataArray<Scalar>::vtkPeriodicDataArray()
   this->TempTupleIdx = -1;
   this->Data = nullptr;
   this->MaxId = -1;
-  this->Size = 0;
+  this->Capacity = 0;
 
   this->InvalidRange = true;
   this->Normalize = false;

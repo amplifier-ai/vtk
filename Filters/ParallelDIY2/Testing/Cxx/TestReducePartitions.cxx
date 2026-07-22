@@ -4,29 +4,21 @@
 #include <string>
 
 #include "vtkClipDataSet.h"
-#include "vtkCompositeDataSet.h"
 #include "vtkDIYAggregateDataSetFilter.h"
-#include "vtkDataSet.h"
 #include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkMPIController.h"
-#include "vtkMultiBlockDataSet.h"
 #include "vtkPartitionedDataSet.h"
 #include "vtkPartitionedDataSetCollection.h"
 #include "vtkPlane.h"
-#include "vtkPlaneCollection.h"
-#include "vtkPolyData.h"
 #include "vtkProcessGroup.h"
 #include "vtkRTAnalyticSource.h"
 #include "vtkRedistributeDataSetFilter.h"
 #include "vtkRedistributeDataSetToSubCommFilter.h"
 #include "vtkSmartPointer.h"
 #include "vtkSphereSource.h"
-#include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkStringFormatter.h"
 #include "vtkUnstructuredGrid.h"
-#include "vtkXMLMultiBlockDataReader.h"
-#include "vtkXMLPartitionedDataSetReader.h"
 #include "vtkXMLPartitionedDataSetWriter.h"
 #include <vtkGroupDataSetsFilter.h>
 #include <vtk_mpi.h>
@@ -198,6 +190,8 @@ int TestReducePartitions(int argc, char* argv[])
   Controller->Initialize(&argc, &argv, 0);
   vtkMultiProcessController::SetGlobalController(Controller);
 
+  vtkLogger::SetThreadName("rank: " + vtk::to_string(Controller->GetLocalProcessId()));
+
   // create a vtkProcessGroup to represent the nodes where data should be aggregated
   int nTargetProcs = 2;
   vtkNew<vtkProcessGroup> subGroup;
@@ -210,25 +204,25 @@ int TestReducePartitions(int argc, char* argv[])
 
   LogMessage(" ---------- Testing redistribution of vtkPartitionedDatasetCollection ---------- ");
   vtkSmartPointer<vtkPartitionedDataSetCollection> pdsc = CreatePartitionedDatasetCollection();
-  RedistributeAndCheck(static_cast<vtkDataObject*>(pdsc.GetPointer()), subGroup);
+  RedistributeAndCheck(pdsc, subGroup);
 
   Controller->Barrier();
 
   LogMessage(" ---------- Testing redistribution of vtkUnstructuredGrid ---------- ");
   vtkSmartPointer<vtkUnstructuredGrid> ug = CreateUnstructuredGrid();
-  RedistributeAndCheck(static_cast<vtkDataObject*>(ug.GetPointer()), subGroup);
+  RedistributeAndCheck(ug, subGroup);
 
   Controller->Barrier();
 
   LogMessage(" ---------- Testing redistribution of vtkImageData ---------- ");
   vtkSmartPointer<vtkImageData> imgData = CreateImageData();
-  RedistributeAndCheck(static_cast<vtkDataObject*>(imgData.GetPointer()), subGroup);
+  RedistributeAndCheck(imgData, subGroup);
 
   Controller->Barrier();
 
   LogMessage(" ---------- Testing redistribution of vtkPartitionedDataSet ---------- ");
   vtkSmartPointer<vtkPartitionedDataSet> pdc = CreatePartitionedDataSet();
-  RedistributeAndCheck(static_cast<vtkDataObject*>(pdc.GetPointer()), subGroup);
+  RedistributeAndCheck(pdc, subGroup);
 
   // cleanup
   Controller->Finalize();

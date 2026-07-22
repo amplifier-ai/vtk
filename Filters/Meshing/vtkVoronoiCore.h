@@ -114,7 +114,9 @@ struct vtkVoronoiWheel
   {
     this->Id = id;
     this->NumSpokes = numSpokes = (this->Wheels[id + 1] - this->Wheels[id]);
-    this->LocalSpokes = &(this->Spokes[this->Wheels[id]]);
+    this->LocalSpokes =
+      ((size_t)this->Wheels[id] < this->Spokes.size() ? &(this->Spokes[this->Wheels[id]])
+                                                      : nullptr);
     return this->LocalSpokes;
   }
 }; // vtkVoronoiWheel
@@ -174,7 +176,7 @@ struct vtkVoronoiAdjacencyGraph
     void operator()(vtkIdType wheelId, vtkIdType endWheelId);
     void Reduce();
   }; // ValidateAdjacencyGraph
-};   // vtkVoronoiAdjacencyGraph
+}; // vtkVoronoiAdjacencyGraph
 
 /**
  * Define hull/tile vertex types. This is to represent generated points,
@@ -440,12 +442,16 @@ struct vtkVoronoiRandom01Range
   double Next() { return this->Dist(RNG); }
 };
 
-// A convenience class and methods to randomly perturb (joggle or jitter)
-// point positions. Such jittering (even if very small) significantly
-// improves the numerical stability of Voronoi and Delaunay computations.
-// Implementation note: these methods might be better added to vtkMath since
-// they can be used by other classes. Once they are demonstrated to be stable,
-// they may be moved.
+// A convenience class and methods to randomly perturb (alternatively:
+// joggle, jitter, or jiggle) point positions. Such jittering (even if very
+// small) significantly improves the numerical stability of Voronoi and
+// Delaunay computations. Terminology note: while joggle is not a widely used
+// term (typically in computer graphics the words perturb, jitter, and jiggle
+// are found more frequently), it is used by the popular QuickHull (and
+// associated implementation QHull qhull.org)--so the terminology was
+// adopted by this work. Implementation note: these methods might be better
+// added to vtkMath since they can be used by other classes. Once they are
+// demonstrated to be stable, they may be moved.
 struct vtkVoronoiJoggle
 {
   // Joggle a single point at input position xIn to produce the output position

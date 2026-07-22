@@ -80,6 +80,7 @@ void vtkSurfaceLICHelper::StreamingFindMinMax(
 vtkSurfaceLICHelper::vtkSurfaceLICHelper()
 {
   this->Viewsize[0] = this->Viewsize[1] = 0;
+  this->ViewOrigin[0] = this->ViewOrigin[1] = 0;
 
   this->ContextNeedsUpdate = true;
   this->CommunicatorNeedsUpdate = true;

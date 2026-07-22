@@ -13,7 +13,7 @@
  * vtkInteractorStyle implements the "joystick" style of interaction. That
  * is, holding down the mouse keys generates a stream of events that cause
  * continuous actions (e.g., rotate, translate, pan, zoom). (The class
- * vtkInteractorStyleTrackball implements a grab and move style.) The event
+ * vtkInteractorStyleSwitch implements a grab and move style.) The event
  * bindings for this class include the following:
  * - Keypress j / Keypress t: toggle between joystick (position sensitive) and
  * trackball (motion sensitive) styles. In joystick style, motion occurs
@@ -420,6 +420,16 @@ public:
    * Called by the callback to process 3DConnexion device events.
    */
   void DelegateTDxEvent(unsigned long event, void* calldata);
+
+  /**
+   * Dolly the renderer's camera to a specific point
+   */
+  static void DollyToPosition(double fact, int* position, vtkRenderer* renderer);
+
+  /**
+   * Translate the renderer's camera
+   */
+  static void TranslateCamera(vtkRenderer* renderer, int toX, int toY, int fromX, int fromY);
 
 protected:
   vtkInteractorStyle();

@@ -344,19 +344,15 @@ if (VTK_WRAP_SERIALIZATION)
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     list(APPEND vtk_requested_modules
       VTK::WebAssemblySession
-      VTK::WebAssembly
-      VTK::WebAssemblyAsync)
+      VTK::WebAssembly)
   else ()
     list(APPEND vtk_rejected_modules
       VTK::WebAssemblySession
-      VTK::WebAssembly
-      VTK::WebAssemblyAsync)
+      VTK::WebAssembly)
   endif ()
   set("_vtk_module_reason_VTK::WebAssemblySession"
   "via `VTK_WRAP_SERIALIZATION` AND `CMAKE_SYSTEM_NAME` STREQUAL Emscripten")
   set("_vtk_module_reason_VTK::WebAssembly"
-  "via `VTK_WRAP_SERIALIZATION` AND `CMAKE_SYSTEM_NAME` STREQUAL Emscripten")
-  set("_vtk_module_reason_VTK::WebAssemblyAsync"
   "via `VTK_WRAP_SERIALIZATION` AND `CMAKE_SYSTEM_NAME` STREQUAL Emscripten")
 else ()
   list(APPEND vtk_rejected_modules
@@ -664,6 +660,15 @@ vtk_module_build(
   SPDX_DOWNLOAD_LOCATION  "https://gitlab.kitware.com/vtk/vtk/-/tree/master"
   ENABLE_SERIALIZATION    "${VTK_WRAP_SERIALIZATION}")
 
+if (VTK_BUILD_TYPES_JSON)
+  # Install the per-class JSON type manifests generated alongside the
+  # serialization sources. The manifests are architecture-agnostic, so a single
+  # flat directory serves both the wasm32 and wasm64 bundles.
+  install(DIRECTORY "${VTK_TYPES_JSON_OUTPUT_DIRECTORY}/"
+    DESTINATION    "${CMAKE_INSTALL_DATAROOTDIR}/vtk${vtk_version_suffix}/types"
+    FILES_MATCHING PATTERN "*.json")
+endif ()
+
 include(vtkModuleJson)
 vtk_module_json(
   MODULES ${vtk_modules}
@@ -852,8 +857,7 @@ if (VTK_BUILD_TESTING)
       target_link_options(vtkWebAssemblyTestLinkOptions INTERFACE
         # Keep Debug builds debuggable without shipping giant in-wasm DWARF sections.
         "$<$<CONFIG:Debug>:-gseparate-dwarf>"
-        # we need emscripten to emit code that handles exit code and atexit(s)
-        "-sEXIT_RUNTIME=1"
+        "$<$<CONFIG:RelWithDebInfo>:-gseparate-dwarf>"
         # ENV holds the environment variables accessible by C getenv
         "-sEXPORTED_RUNTIME_METHODS=['ENV']"
         # tests dynamically allocate memory, can easily go over the preset limit.

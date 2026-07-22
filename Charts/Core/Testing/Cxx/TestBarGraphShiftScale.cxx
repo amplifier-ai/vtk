@@ -29,12 +29,10 @@ int TestBarGraphShiftScale(int, char*[])
   vtkNew<vtkRenderWindow> renWin;
   renWin->SetSize(600, 300);
   vtkNew<vtkRenderer> lRen;
-  ;
   renWin->AddRenderer(lRen);
   lRen->SetViewport(0.0, 0.0, 0.5, 1.0);
   lRen->SetBackground(1.0, 1.0, 1.0);
   vtkNew<vtkRenderer> rRen;
-  ;
   renWin->AddRenderer(rRen);
   rRen->SetViewport(0.5, 0.0, 1.0, 1.0);
   rRen->SetBackground(1.0, 1.0, 1.0);

@@ -65,8 +65,8 @@ int TestGhostCellFields(vtkMPIController* controller)
   int myRank = controller->GetLocalProcessId();
   int nbRanks = controller->GetNumberOfProcesses();
 
-  const int expectedNbOfCells[4] = { 336, 288, 408, 240 };
-  const double expectedScalarRange[2] = { 0, 30001 };
+  const int expectedNbOfCells[4] = { 352, 408, 344, 464 };
+  const double expectedScalarRange[2] = { 0, 30257 };
 
   // Setup pipeline
   vtkNew<vtkRandomHyperTreeGridSource> htgSource;
@@ -154,7 +154,7 @@ int TestGhostMasking(vtkMPIController* controller)
   int myRank = controller->GetLocalProcessId();
   int nbRanks = controller->GetNumberOfProcesses();
 
-  const int expectedNbOfCells[4] = { 224, 312, 200, 280 };
+  const int expectedNbOfCells[4] = { 208, 336, 296, 336 };
 
   // Setup pipeline
   vtkNew<vtkRandomHyperTreeGridSource> htgSource;
@@ -185,14 +185,14 @@ int TestGhostMasking(vtkMPIController* controller)
     vtkErrorWithObjectMacro(nullptr, << "Wrong number of ghost cells generated for process "
                                      << myRank << ". Has " << nbCellsAfter << " but expect "
                                      << expectedNbOfCells[myRank]);
-    ret = EXIT_FAILURE;
+    return EXIT_FAILURE; // Not necessary to continue comparing
   }
 
   // Check that every piece has the right amount of ghost cells
   if (!htg->HasAnyGhostCells())
   {
     vtkErrorWithObjectMacro(nullptr, << "No ghost cells generated for process " << myRank);
-    ret = EXIT_FAILURE;
+    return EXIT_FAILURE;
   }
   for (int i = 0; i < expectedNbOfCells[myRank]; i++)
   {
@@ -365,7 +365,6 @@ int TestGhostSinglePiece(vtkMPIController* controller, const std::string& filena
 
   // Create GCG
   vtkNew<vtkHyperTreeGridGhostCellsGenerator> generator;
-  generator->SetDebug(true);
   generator->SetInputConnection(reader->GetOutputPort());
   vtkSmartPointer<vtkHyperTreeGrid> htgGhosted(generator->GetHyperTreeGridOutput());
   vtkSmartPointer<vtkHyperTreeGrid> htgRead(
@@ -426,7 +425,6 @@ int TestPartitionedHTG(vtkMPIController* controller, int config)
 
   // Create and execute GCG
   vtkNew<vtkHyperTreeGridGhostCellsGenerator> generator;
-  generator->SetDebug(true);
   generator->SetInputData(pdsSource);
   vtkSmartPointer<vtkPartitionedDataSet> outputPDS =
     vtkPartitionedDataSet::SafeDownCast(generator->GetOutputDataObject(0));
@@ -447,7 +445,7 @@ int TestPartitionedHTG(vtkMPIController* controller, int config)
   int ret = EXIT_SUCCESS;
 
   // Only one partition on each rank is expected to be non-null.
-  const std::array<vtkIdType, 4> expectedNbOfCells = { 336, 288, 408, 240 };
+  const std::array<vtkIdType, 4> expectedNbOfCells = { 352, 408, 344, 464 };
   for (unsigned int partId = 0; partId < outputPDS->GetNumberOfPartitions(); partId++)
   {
     vtkHyperTreeGrid* partHTG =
@@ -486,54 +484,32 @@ int TestPartitionedHTG(vtkMPIController* controller, int config)
   return ret;
 }
 
-int TestExchangeMetadata(vtkMPIController* controller, const std::string& filename)
+//------------------------------------------------------------------------------
+int TestInvalidExtent(vtkMPIController* controller)
 {
   int myRank = controller->GetLocalProcessId();
-  int nbRanks = controller->GetNumberOfProcesses();
 
-  vtkNew<vtkHyperTreeGridGhostCellsGenerator> generator;
-  if (myRank == 0)
+  // Create HTG with an invalid extent on all ranks
+  vtkNew<vtkHyperTreeGridSource> htg;
+  htg->SetDescriptor(".");
+  htg->SetUseMask(true);
+  htg->SetMask("0");
+  htg->SetDimensions(2, 2, 1);
+
+  vtkNew<vtkHyperTreeGridGhostCellsGenerator> redistribute;
+  redistribute->SetInputConnection(htg->GetOutputPort());
+  redistribute->UpdatePiece(myRank, controller->GetNumberOfProcesses(), 0);
+  vtkHyperTreeGrid* outputHTG = redistribute->GetHyperTreeGridOutput();
+
+  if (outputHTG->GetNumberOfNonEmptyTrees() > 0)
   {
-    vtkNew<vtkXMLHyperTreeGridReader> reader;
-    reader->SetFileName(filename.c_str());
-    reader->UpdatePiece(myRank, nbRanks, 0);
-
-    generator->SetInputConnection(reader->GetOutputPort());
-  }
-  else
-  {
-    vtkNew<vtkHyperTreeGrid> htg;
-    htg->Initialize();
-    generator->SetInputData(htg);
-  }
-
-  if (generator->UpdatePiece(myRank, nbRanks, 0) != 1)
-  {
-    vtkErrorWithObjectMacro(nullptr, << "Fail to update piece for process " << myRank);
-    return EXIT_FAILURE;
-  }
-
-  vtkHyperTreeGrid* htg = vtkHyperTreeGrid::SafeDownCast(generator->GetOutputDataObject(0));
-
-  const unsigned int* dims = htg->GetDimensions();
-  std::array<unsigned int, 3> expectedDims = { 3, 3, 3 };
-  if (dims[0] != expectedDims[0] || dims[1] != expectedDims[1] || dims[2] != expectedDims[2])
-  {
-    vtkLogF(ERROR, "Invalid dimensions for htg. Expected (%d, %d, %d) but got (%d, %d, %d)",
-      expectedDims[0], expectedDims[1], expectedDims[2], dims[0], dims[1], dims[2]);
-    return EXIT_FAILURE;
-  }
-
-  unsigned int expectedBranchFactor = 2;
-  if (htg->GetBranchFactor() != expectedBranchFactor)
-  {
-    vtkLogF(ERROR, "Invalid branch factor. Expected %d but got %d", expectedBranchFactor,
-      htg->GetBranchFactor());
+    vtkErrorWithObjectMacro(nullptr, "Expected no non-null trees");
     return EXIT_FAILURE;
   }
 
   return EXIT_SUCCESS;
 }
+
 }
 
 /**
@@ -573,7 +549,7 @@ int TestHyperTreeGridGhostCellsGenerator(int argc, char* argv[])
   ret |= ::TestPartitionedHTG(controller, 0);
   ret |= ::TestPartitionedHTG(controller, 1);
   ret |= ::TestPartitionedHTG(controller, 2);
-  ret |= ::TestExchangeMetadata(controller, htgFileName);
+  ret |= ::TestInvalidExtent(controller);
 
   controller->Finalize();
   return ret;

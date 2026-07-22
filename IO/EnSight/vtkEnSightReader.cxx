@@ -497,30 +497,57 @@ int vtkEnSightReader::ReadCaseFileGeometry(char* line)
     if (strncmp(line, "model:", 6) == 0)
     {
       const std::string_view lineView(line);
-      if (auto resultSubLine0 =
-            vtk::scan<std::string_view, int, int, std::string>(lineView, " {:s} {:d} {:d} {:s}"))
+      std::string_view dummy, timeSetView, fileSetView;
+      std::string pathString;
+      if (auto resultSet0 =
+            vtk::scan<std::string_view, std::string_view, std::string_view, std::string>(
+              lineView, " {:s} {:s} {:s} {:[^\n\r]}"))
       {
-        auto& [_0, timeSet, fileSet, subLine] = resultSubLine0->values();
-        this->GeometryTimeSet = timeSet;
-        this->GeometryFileSet = fileSet;
-        this->SetGeometryFileName(subLine.c_str());
+        std::tie(dummy, timeSetView, fileSetView, pathString) = resultSet0->values();
+      }
+      else if (auto resultSet1 = vtk::scan<std::string_view, std::string_view, std::string_view>(
+                 lineView, " {:s} {:s} {:[^\n\r]}"))
+      {
+        std::tie(dummy, timeSetView, pathString) = resultSet1->values();
+      }
+      else if (auto resultSet2 =
+                 vtk::scan<std::string_view, std::string_view>(lineView, " {:s} {:[^\n\r]}"))
+      {
+        std::tie(dummy, pathString) = resultSet2->values();
+      }
+
+      if (!timeSetView.empty())
+      {
+        auto timeSetResult = vtk::scan_int<int>(timeSetView);
+        if (timeSetResult)
+        {
+          this->GeometryTimeSet = timeSetResult->value();
+        }
+        else
+        {
+          vtkErrorMacro("Could not parse time set from line: '" << line << "'");
+        }
+      }
+      if (!fileSetView.empty())
+      {
+        auto fileSetResult = vtk::scan_int<int>(fileSetView);
+        if (fileSetResult)
+        {
+          this->GeometryFileSet = fileSetResult->value();
+        }
+        else
+        {
+          vtkErrorMacro("Could not parse file set from line: '" << line << "'");
+        }
+      }
+      if (!pathString.empty())
+      {
+        this->SetGeometryFileName(pathString.c_str());
         vtkDebugMacro(<< this->GetGeometryFileName());
       }
-      else if (auto resultSubLine1 =
-                 vtk::scan<std::string_view, int, std::string>(lineView, " {:s} {:d} {:s}"))
+      else
       {
-        auto& [_0, timeSet, subLine] = resultSubLine1->values();
-        this->GeometryTimeSet = timeSet;
-        this->SetGeometryFileName(subLine.c_str());
-        vtkDebugMacro(<< this->GetGeometryFileName());
-        ;
-      }
-      else if (auto resultSubLine2 =
-                 vtk::scan<std::string_view, std::string>(lineView, " {:s} {:s}"))
-      {
-        auto& [_0, subLine] = resultSubLine2->values();
-        this->SetGeometryFileName(subLine.c_str());
-        vtkDebugMacro(<< this->GetGeometryFileName());
+        vtkErrorMacro("Could not parse geometry file name from line: '" << line << "'");
       }
     }
     else if (strncmp(line, "measured:", 9) == 0)
@@ -1420,11 +1447,13 @@ int vtkEnSightReader::ReadCaseFileFile(char* line)
     strncmp(line, "VARIABLE", 8) != 0 && strncmp(line, "TIME", 4) != 0 &&
     strncmp(line, "FILE", 4) != 0)
   {
-    vtkIdList* filenameNums = vtkIdList::New();
-    vtkIdList* numSteps = vtkIdList::New();
-    auto resultFileSet =
-      vtk::scan<std::string_view, std::string_view, int>(std::string_view(line), "{:s} {:s} {:d}");
-    int fileSet = std::get<2>(resultFileSet->values());
+    vtkNew<vtkIdList> filenameNums, numSteps;
+    auto resultFileSet = vtk::scan<int>(std::string_view(line), "file set: {:d}");
+    if (!resultFileSet)
+    {
+      break;
+    }
+    int fileSet = resultFileSet->value();
     this->FileSets->InsertNextId(fileSet);
     lineRead = this->ReadNextDataLine(line);
     if (strncmp(line, "filename", 8) == 0)
@@ -1447,17 +1476,14 @@ int vtkEnSightReader::ReadCaseFileFile(char* line)
     }
     else
     {
-      auto resultNumSteps = vtk::scan<std::string_view, std::string_view, std::string_view, int>(
-        std::string_view(line), "{:s} {:s} {:s} {:d}");
-      numTimeSteps = std::get<3>(resultNumSteps->values());
+      auto resultNumSteps = vtk::scan<int>(std::string_view(line), "number of steps: {:d}");
+      numTimeSteps = resultNumSteps->value();
+
       numSteps->InsertNextId(numTimeSteps);
       lineRead = this->ReadNextDataLine(line);
     }
 
     this->FileSetNumberOfSteps->AddItem(numSteps);
-
-    filenameNums->Delete();
-    numSteps->Delete();
   }
 
   return lineRead;
@@ -1738,7 +1764,7 @@ int vtkEnSightReader::ReadRigidBodyGeometryFile()
   this->UseEulerTimeSteps = false;
   if (this->EulerTimeSteps)
   {
-    this->EulerTimeSteps->SetNumberOfTuples(0);
+    this->EulerTimeSteps->Initialize();
   }
 
   // this should be EnSight Rigid Body

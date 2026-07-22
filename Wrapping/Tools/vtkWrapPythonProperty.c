@@ -5,6 +5,7 @@
 #include "vtkParseData.h"
 #include "vtkParseHierarchy.h"
 #include "vtkParseProperties.h"
+#include "vtkWrap.h"
 #include "vtkWrapPythonMethodDef.h"
 
 #include <ctype.h>
@@ -63,6 +64,10 @@ typedef struct
   int HasGetter;
   int HasSetter;
   int HasMultiSetter;
+  int HasAddSetter;      /* for Add/RemoveAll sequence properties */
+  const char* AddSuffix; /* e.g. "Light" for AddLight (singular form) */
+  int IsEnum;
+  const char** EnumNames; /* null-terminated array from PropertyInfo */
 } GetSetDefInfo;
 
 /* Returns a new zero-filled GetSetDefInfo, increments the count.
@@ -129,7 +134,7 @@ static int vtkWrapPython_IsMultiSetter(const unsigned int methodType)
 
 /* Calls vtkWrapPython_MethodCheck to figure out the wrappability of the method. */
 static int vtkWrapPython_IsWrappable(
-  const ClassInfo* classInfo, FunctionInfo* functionInfo, const HierarchyInfo* hinfo)
+  const ClassInfo* classInfo, const FunctionInfo* functionInfo, const HierarchyInfo* hinfo)
 {
   const int isWrappable = vtkWrapPython_MethodCheck(classInfo, functionInfo, hinfo);
   return isWrappable;
@@ -165,30 +170,143 @@ void vtkWrapPython_GenerateProperties(FILE* fp, const char* classname, ClassInfo
         getSetInfo->HasGetter |= isGetter;
         getSetInfo->HasSetter |= isSetter;
         getSetInfo->HasMultiSetter |= vtkWrapPython_IsMultiSetter(properties->MethodTypes[i]);
+        if (isGetter && !getSetInfo->IsEnum)
+        {
+          int propIdx = properties->MethodProperties[i];
+          PropertyInfo* prop = properties->Properties[propIdx];
+          if (prop->EnumConstantNames && (prop->PublicMethods & VTK_METHOD_SET_VALUE_TO))
+          {
+            getSetInfo->IsEnum = 1;
+            getSetInfo->EnumNames = prop->EnumConstantNames;
+          }
+        }
+      }
+    }
+  }
+
+  /* Second pass: find Add/RemoveAll pairs and attach as sequence setters.
+   * For each Add method whose property also has RemoveAll, find the
+   * matching getter property (plural name) and attach the setter. */
+  for (i = 0; i < classInfo->NumberOfFunctions; ++i)
+  {
+    int propIdx, k;
+    PropertyInfo* prop;
+    const char* addSuffix;
+    const char* removeAllSuffix;
+
+    theFunc = classInfo->Functions[i];
+    if (!vtkWrapPython_IsWrappable(classInfo, theFunc, hinfo))
+    {
+      continue;
+    }
+    if (!properties->MethodHasProperty[i])
+    {
+      continue;
+    }
+    /* Only process Add methods (single-argument) */
+    if (properties->MethodTypes[i] != VTK_METHOD_ADD &&
+      properties->MethodTypes[i] != VTK_METHOD_ADD_NODISCARD)
+    {
+      continue;
+    }
+    /* Check if the property also has a RemoveAll method */
+    propIdx = properties->MethodProperties[i];
+    prop = properties->Properties[propIdx];
+    if (!(prop->PublicMethods & VTK_METHOD_REMOVE_ALL))
+    {
+      continue;
+    }
+    /* Find the RemoveAll method in the same property to get the plural name */
+    addSuffix = &theFunc->Name[3]; /* e.g. "Light" from "AddLight" */
+    for (k = 0; k < classInfo->NumberOfFunctions; ++k)
+    {
+      if (properties->MethodHasProperty[k] && properties->MethodProperties[k] == propIdx &&
+        properties->MethodTypes[k] == VTK_METHOD_REMOVE_ALL &&
+        vtkWrapPython_IsWrappable(classInfo, classInfo->Functions[k], hinfo))
+      {
+        removeAllSuffix = &classInfo->Functions[k]->Name[9]; /* e.g. "Lights" */
+        /* Look for existing getter property with this plural name */
+        getSetInfo = vtkWrapPython_FindGetSet(removeAllSuffix, &getSetsInfo, &propCount);
+        if (!getSetInfo->HasSetter && !getSetInfo->HasMultiSetter)
+        {
+          getSetInfo->HasAddSetter = 1;
+          getSetInfo->AddSuffix = addSuffix;
+        }
+        break;
       }
     }
   }
 
   if (propCount > 0)
   {
+    /* generate static enum name arrays for enum properties */
+    for (j = 0; j < propCount; ++j)
+    {
+      getSetInfo = getSetsInfo[j];
+      if (getSetInfo->IsEnum && getSetInfo->EnumNames)
+      {
+        int k;
+        fprintf(fp, "static const char* Py%s_%s_EnumNames[] = {\n", classname, getSetInfo->Name);
+        for (k = 0; getSetInfo->EnumNames[k] != NULL; k++)
+        {
+          fprintf(fp, "  \"%s\",\n", getSetInfo->EnumNames[k]);
+        }
+        fprintf(fp, "  nullptr\n};\n\n");
+      }
+    }
+
     /* generate a table of the class getter/setter methods */
     fprintf(fp, "static PyVTKGetSet Py%s_GetSetMethods[] = {\n", classname);
 
     for (j = 0; j < propCount; ++j)
     {
+      const char* getter;
+      const char* setter;
+      const char* adder;
+      char getterBuf[256];
+      char setterBuf[256];
+      char adderBuf[256];
+
       getSetInfo = getSetsInfo[j];
-      if (getSetInfo->HasGetter && !getSetInfo->HasSetter)
+
+      if (getSetInfo->HasGetter)
       {
-        fprintf(fp, "  { Py%s_Get%s, nullptr },\n", classname, getSetInfo->Name);
-      }
-      else if (!getSetInfo->HasGetter && getSetInfo->HasSetter)
-      {
-        fprintf(fp, "  { nullptr, Py%s_Set%s },\n", classname, getSetInfo->Name);
+        snprintf(getterBuf, sizeof(getterBuf), "Py%s_Get%s", classname, getSetInfo->Name);
+        getter = getterBuf;
       }
       else
       {
-        fprintf(fp, "  { Py%s_Get%s, Py%s_Set%s },\n", classname, getSetInfo->Name, classname,
-          getSetInfo->Name);
+        getter = "nullptr";
+      }
+
+      if (getSetInfo->HasAddSetter)
+      {
+        /* For Add/RemoveAll: set=RemoveAll, add=Add */
+        snprintf(setterBuf, sizeof(setterBuf), "Py%s_RemoveAll%s", classname, getSetInfo->Name);
+        setter = setterBuf;
+        snprintf(adderBuf, sizeof(adderBuf), "Py%s_Add%s", classname, getSetInfo->AddSuffix);
+        adder = adderBuf;
+      }
+      else if (getSetInfo->HasSetter)
+      {
+        snprintf(setterBuf, sizeof(setterBuf), "Py%s_Set%s", classname, getSetInfo->Name);
+        setter = setterBuf;
+        adder = "nullptr";
+      }
+      else
+      {
+        setter = "nullptr";
+        adder = "nullptr";
+      }
+
+      if (getSetInfo->IsEnum && getSetInfo->EnumNames)
+      {
+        fprintf(fp, "  { %s, %s, %s, \"%s\", Py%s_%s_EnumNames },\n", getter, setter, adder,
+          getSetInfo->Name, classname, getSetInfo->Name);
+      }
+      else
+      {
+        fprintf(fp, "  { %s, %s, %s, nullptr, nullptr },\n", getter, setter, adder);
       }
     }
 
@@ -233,7 +351,15 @@ void vtkWrapPython_GenerateProperties(FILE* fp, const char* classname, ClassInfo
     {
       fprintf(fp, "    nullptr, // get\n");
     }
-    if (getSetInfo->HasMultiSetter)
+    if (getSetInfo->HasAddSetter)
+    {
+      fprintf(fp, "    PyVTKObject_SetPropertySequence, // set\n");
+    }
+    else if (getSetInfo->IsEnum && getSetInfo->HasSetter)
+    {
+      fprintf(fp, "    PyVTKObject_SetPropertyEnum, // set\n");
+    }
+    else if (getSetInfo->HasMultiSetter)
     {
       fprintf(fp, "    PyVTKObject_SetPropertyMulti, // set\n");
     }
@@ -247,7 +373,31 @@ void vtkWrapPython_GenerateProperties(FILE* fp, const char* classname, ClassInfo
     }
 
     /* Define the doc string */
-    if (getSetInfo->HasGetter && !getSetInfo->HasSetter)
+    if (getSetInfo->HasAddSetter && getSetInfo->HasGetter)
+    {
+      fprintf(fp, "    pystr(\"read-write, calls Get%s/Add%s/RemoveAll%s\\n\"), // doc\n",
+        getSetInfo->Name, getSetInfo->AddSuffix, getSetInfo->Name);
+    }
+    else if (getSetInfo->HasAddSetter && !getSetInfo->HasGetter)
+    {
+      fprintf(fp, "    pystr(\"write-only, calls Add%s/RemoveAll%s\\n\"), // doc\n",
+        getSetInfo->AddSuffix, getSetInfo->Name);
+    }
+    else if (getSetInfo->IsEnum && getSetInfo->HasGetter && getSetInfo->HasSetter)
+    {
+      int k;
+      fprintf(fp, "    pystr(\"read-write (");
+      for (k = 0; getSetInfo->EnumNames[k] != NULL; k++)
+      {
+        if (k > 0)
+        {
+          fprintf(fp, "|");
+        }
+        fprintf(fp, "%s", getSetInfo->EnumNames[k]);
+      }
+      fprintf(fp, "), calls Get%s/Set%s\\n\"), // doc\n", getSetInfo->Name, getSetInfo->Name);
+    }
+    else if (getSetInfo->HasGetter && !getSetInfo->HasSetter)
     {
       fprintf(fp, "    pystr(\"read-only, calls Get%s\\n\"), // doc\n", getSetInfo->Name);
     }

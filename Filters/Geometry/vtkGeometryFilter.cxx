@@ -97,6 +97,9 @@ vtkGeometryFilter::vtkGeometryFilter()
 
   // Enable delegation to an internal vtkDataSetSurfaceFilter.
   this->Delegation = true;
+
+  this->CachedUnstructuredInfo = nullptr;
+  this->CachedUnstructuredInfoMTime = 0;
 }
 
 //------------------------------------------------------------------------------
@@ -104,6 +107,36 @@ vtkGeometryFilter::~vtkGeometryFilter()
 {
   this->SetOriginalCellIdsName(nullptr);
   this->SetOriginalPointIdsName(nullptr);
+  delete this->CachedUnstructuredInfo;
+}
+
+//------------------------------------------------------------------------------
+vtkGeometryFilterHelper* vtkGeometryFilter::GetCachedUnstructuredInfo(
+  vtkUnstructuredGridBase* uGrid)
+{
+  // Reuse a previously-computed characterization when the input's cell
+  // array has not changed. CharacterizeUnstructuredGrid is a parallel
+  // O(ncells) scan whose result depends only on the cell array, so we
+  // cache it keyed on that array's MTime. Falls back to recomputing if
+  // we can't get a stable MTime (e.g. non-vtkUnstructuredGrid base).
+  vtkUnstructuredGrid* uG = vtkUnstructuredGrid::SafeDownCast(uGrid);
+  vtkCellArray* cells = uG ? uG->GetCells() : nullptr;
+  if (!cells)
+  {
+    delete this->CachedUnstructuredInfo;
+    this->CachedUnstructuredInfo = vtkGeometryFilterHelper::CharacterizeUnstructuredGrid(uGrid);
+    this->CachedUnstructuredInfoMTime = 0;
+    return this->CachedUnstructuredInfo;
+  }
+  vtkMTimeType cellsMTime = cells->GetMTime();
+  if (this->CachedUnstructuredInfo && this->CachedUnstructuredInfoMTime == cellsMTime)
+  {
+    return this->CachedUnstructuredInfo;
+  }
+  delete this->CachedUnstructuredInfo;
+  this->CachedUnstructuredInfo = vtkGeometryFilterHelper::CharacterizeUnstructuredGrid(uGrid);
+  this->CachedUnstructuredInfoMTime = cellsMTime;
+  return this->CachedUnstructuredInfo;
 }
 
 //------------------------------------------------------------------------------
@@ -1005,7 +1038,7 @@ void ExtractDSCellGeometry(vtkDataSet* input, vtkIdType cellId, const char* cell
         }
         break;
     } // switch
-  }   // non-empty cell
+  } // non-empty cell
 } // extract dataset geometry
 
 //--------------------------------------------------------------------------
@@ -1466,7 +1499,7 @@ struct ExtractUG : public ExtractCellBoundaries<TInputIdType>
             const auto pts = connectivityPtr + offsetsRange[cellId];
             ExtractCellGeometry(This->Grid, cellId, type, npts, pts, faceId, &localData, isGhost);
           } // if cell visible
-        }   // for all cells in this hash
+        } // for all cells in this hash
         // add external faces from the face list to polys (if any)
         faceList.PopulateCellArray(&polys);
         // and reset the list.
@@ -1509,12 +1542,12 @@ struct ExtractUG : public ExtractCellBoundaries<TInputIdType>
 template <typename TGrid, typename TInputIdType>
 struct ExtractStructured : public ExtractCellBoundaries<TInputIdType>
 {
-  TGrid* Input;       // Input data
-  bool FastMode;      // Whether to use fast mode or not
-  bool* ExtractFaces; // Whether to extract faces or not
-  int* Extent;        // Data extent
-  int* WholeExtent;   // Whole extent
-  int Dims[3];        // Grid dimensions
+  TGrid* Input;                      // Input data
+  bool FastMode;                     // Whether to use fast mode or not
+  bool* ExtractFaces;                // Whether to extract faces or not
+  int* Extent;                       // Data extent
+  VTK_FUTURE_CONST int* WholeExtent; // Whole extent
+  int Dims[3];                       // Grid dimensions
 
   bool ForceSimpleVisibilityCheck; // Whether to force simple visibility check
   bool AllCellsVisible;            // Whether all cells are visible
@@ -1525,9 +1558,9 @@ struct ExtractStructured : public ExtractCellBoundaries<TInputIdType>
 
   vtkIdType NumberOfFaces;
 
-  ExtractStructured(vtkGeometryFilter* self, TGrid* ds, int* wholeExtent, bool* extractFaces,
-    bool merging, unsigned char* cellGhosts, vtkExcludedFaces<TInputIdType>* exc,
-    ThreadOutputType<TInputIdType>* t)
+  ExtractStructured(vtkGeometryFilter* self, TGrid* ds, VTK_FUTURE_CONST int wholeExtent[6],
+    bool* extractFaces, bool merging, unsigned char* cellGhosts,
+    vtkExcludedFaces<TInputIdType>* exc, ThreadOutputType<TInputIdType>* t)
     : ExtractCellBoundaries<TInputIdType>(self, nullptr, cellGhosts, nullptr, exc, t)
     , Input(ds)
     , FastMode(self->GetFastMode())
@@ -1832,8 +1865,9 @@ struct ExtractStructured : public ExtractCellBoundaries<TInputIdType>
   void Reduce() override {}
 
   static ExtractCellBoundaries<TInputIdType>* Execute(vtkGeometryFilter* self, TGrid* ds,
-    int* wholeExtent, bool* extractFaces, bool merging, unsigned char* cellGhosts,
-    vtkExcludedFaces<TInputIdType>* exc, ThreadOutputType<TInputIdType>* t)
+    VTK_FUTURE_CONST int wholeExtent[6], bool* extractFaces, bool merging,
+    unsigned char* cellGhosts, vtkExcludedFaces<TInputIdType>* exc,
+    ThreadOutputType<TInputIdType>* t)
   {
     auto extract = new ExtractStructured<TGrid, TInputIdType>(
       self, ds, wholeExtent, extractFaces, merging, cellGhosts, exc, t);
@@ -1975,8 +2009,7 @@ struct IdRecorder
     {
       this->Ids.TakeReference(vtkIdTypeArray::New());
       this->Ids->SetName(name);
-      this->Ids->SetNumberOfComponents(1);
-      this->Ids->Allocate(allocSize);
+      this->Ids->ReserveValues(allocSize);
       attrD->AddArray(this->Ids.Get());
     }
   }
@@ -2003,11 +2036,11 @@ struct IdRecorder
   }
   vtkIdType* GetPointer() { return this->Ids->GetPointer(0); }
   vtkTypeBool PassThru() { return this->Ids.Get() != nullptr; }
-  void Allocate(vtkIdType num)
+  void ReserveValues(vtkIdType num)
   {
     if (this->Ids.Get() != nullptr)
     {
-      this->Ids->Allocate(num);
+      this->Ids->ReserveValues(num);
     }
   }
   void SetNumberOfValues(vtkIdType num)
@@ -2572,8 +2605,8 @@ int ExecutePolyData(vtkGeometryFilter* self, vtkDataSet* dataSetInput, vtkPolyDa
 
   // Allocate
   //
-  origCellIds.Allocate(numCells);
-  origPointIds.Allocate(numPts);
+  origCellIds.ReserveValues(numCells);
+  origPointIds.ReserveValues(numPts);
 
   output->AllocateEstimate(numCells, 1);
   outputCD->CopyAllocate(cd, numCells, numCells / 2);
@@ -2635,7 +2668,7 @@ int ExecutePolyData(vtkGeometryFilter* self, vtkDataSet* dataSetInput, vtkPolyDa
       outputCD->CopyData(cd, cellId, newCellId);
       origCellIds.Insert(cellId, newCellId);
     } // if visible
-  }   // for all cells
+  } // for all cells
 
   // Update ourselves and release memory
   //
@@ -2926,8 +2959,10 @@ int ExecuteUnstructuredGrid(vtkGeometryFilter* self, vtkDataSet* dataSetInput, v
   bool info_owned = false;
   if (info == nullptr)
   {
-    info = vtkGeometryFilterHelper::CharacterizeUnstructuredGrid(uGridBase);
-    info_owned = true;
+    // Use the filter's cached characterization when possible. The cache
+    // keys on the input cell-array MTime; static topology hits the cache
+    // and avoids the parallel O(ncells) scan on every update.
+    info = self->GetCachedUnstructuredInfo(uGridBase);
   }
 
   // Nonlinear cells are handled by vtkDataSetSurfaceFilter
@@ -2937,7 +2972,10 @@ int ExecuteUnstructuredGrid(vtkGeometryFilter* self, vtkDataSet* dataSetInput, v
     vtkNew<vtkDataSetSurfaceFilter> dssf;
     vtkGeometryFilterHelper::CopyFilterParams(self, dssf.Get());
     dssf->UnstructuredGridExecute(dataSetInput, output, info);
-    delete info;
+    if (info_owned)
+    {
+      delete info;
+    }
     return 1;
   }
   // if it's an unstructured grid base and not an unstructured grid
@@ -3075,10 +3113,10 @@ int ExecuteUnstructuredGrid(vtkGeometryFilter* self, vtkDataSet* dataSetInput, v
             cellVis[cellId] = 0;
             break;
           } // point/extent clipping
-        }   // for each point
-      }     // if point clipping needs checking
-    }       // for all cells
-  }         // if not all visible
+        } // for each point
+      } // if point clipping needs checking
+    } // for all cells
+  } // if not all visible
 
   // Prepare to generate the output. The cell arrays are of course the output vertex,
   // line, polygon, and triangle strip output. The four IdListType's capture the
@@ -3219,6 +3257,7 @@ int vtkGeometryFilter::UnstructuredGridExecute(vtkDataSet* dataSetInput, vtkPoly
   vtkGeometryFilterHelper* info, vtkPolyData* excludedFaces)
 {
   const auto uGrid = vtkUnstructuredGrid::SafeDownCast(dataSetInput);
+
 #ifdef VTK_USE_64BIT_IDS
   bool use64BitsIds = (dataSetInput->GetNumberOfPoints() > VTK_TYPE_INT32_MAX ||
     dataSetInput->GetNumberOfCells() > VTK_TYPE_INT32_MAX);
@@ -3292,7 +3331,7 @@ namespace
 //------------------------------------------------------------------------------
 template <typename TInputIdType>
 int ExecuteStructured(vtkGeometryFilter* self, vtkDataSet* input, vtkPolyData* output,
-  int* wholeExtent, vtkExcludedFaces<TInputIdType>* exc, bool* extractFace)
+  VTK_FUTURE_CONST int wholeExtent[6], vtkExcludedFaces<TInputIdType>* exc, bool* extractFace)
 {
   vtkIdType numCells = input->GetNumberOfCells();
   vtkPointData* inPD = input->GetPointData();
@@ -3463,8 +3502,8 @@ int ExecuteStructured(vtkGeometryFilter* self, vtkDataSet* input, vtkPolyData* o
 }
 
 //------------------------------------------------------------------------------
-int vtkGeometryFilter::StructuredExecute(vtkDataSet* input, vtkPolyData* output, int* wholeExtent,
-  vtkPolyData* excludedFaces, bool* extractFace)
+int vtkGeometryFilter::StructuredExecute(vtkDataSet* input, vtkPolyData* output,
+  VTK_FUTURE_CONST int wholeExtent[6], vtkPolyData* excludedFaces, bool* extractFace)
 {
   int dataDim = -1;
   if (auto imageData = vtkImageData::SafeDownCast(input))
@@ -3531,7 +3570,7 @@ int vtkGeometryFilter::StructuredExecute(vtkDataSet* input, vtkPolyData* output,
 //------------------------------------------------------------------------------
 // Process various types of structured datasets.
 int vtkGeometryFilter::StructuredExecute(
-  vtkDataSet* input, vtkPolyData* output, int* wholeExtent, bool* extractFace)
+  vtkDataSet* input, vtkPolyData* output, VTK_FUTURE_CONST int wholeExtent[6], bool* extractFace)
 {
   return this->StructuredExecute(input, output, wholeExtent, nullptr, extractFace);
 }

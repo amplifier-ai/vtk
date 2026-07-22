@@ -157,14 +157,12 @@ int TestOverlappingAMR(int, char*[])
   if (amr->HasChildrenInformation())
   {
     vtkLogF(ERROR, "Unexpectedly contains children information");
-    ;
     return EXIT_FAILURE;
   }
   amr->GenerateParentChildInformation();
   if (!amr->HasChildrenInformation())
   {
     vtkLogF(ERROR, "Unexpectedly doesn't contains children information");
-    ;
     return EXIT_FAILURE;
   }
 

@@ -68,6 +68,10 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "fedora[0-9]*_x86_64" OR
     # Flaky failures https://gitlab.kitware.com/vtk/vtk/-/issues/19040
     "^VTK::ViewsInfovisCxx-TestGraphLayoutView(SerDes)?$"
     "^VTK::ViewsInfovisCxx-TestRenderView(SerDes)?$"
+
+    # ANARI volume rendering issue: https://gitlab.kitware.com/vtk/vtk/-/work_items/20024
+    "^VTK::RenderingAnariCxx-TestAnariCameraInside"
+    "^VTK::RenderingAnariCxx-TestAnariCameraInsideSmallSpacing"
     )
 endif ()
 
@@ -127,6 +131,10 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "fedora[0-9]*_x86_64")
 
     # MPI detects bad memory handling
     "^VTK::IOPIOPython-MPI-TestPIOReader$"
+
+    # Widget with strange artifacts in resulting image
+    # https://gitlab.kitware.com/vtk/vtk/-/work_items/20113
+    "^VTK::InteractionWidgetsCxx-TestFinitePlaneWidget$"
     )
 endif ()
 
@@ -428,7 +436,9 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "macos")
     "^VTK::FiltersMeshingPython-TestVoronoi3D-Lissajous$"
     "^VTK::FiltersMeshingPython-TestVoronoi3D2$"
     "^VTK::FiltersMeshingPython-TestVoronoi2D3$"
-    "^VTK::FiltersMeshingPython-TestVoronoi2D$")
+    "^VTK::FiltersMeshingPython-TestVoronoi2D$"
+    "^VTK::FiltersMeshingCxx-TestVoronoiHull2(SerDes)?$"
+    "^VTK::FiltersMeshingCxx-TestVoronoi2DSurfaceNets(SerDes)?$")
 
   if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "arm64")
     # Unknown NSInternalInconsistencyException when using macos arm64
@@ -501,8 +511,6 @@ endif ()
 if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "stdthread")
   list(APPEND test_exclusions
     # Test is flaky with STDThread
-    # See #18555
-    "^VTK::FiltersFlowPathsCxx-TestEvenlySpacedStreamlines2D$"
     # https://gitlab.kitware.com/vtk/vtk/-/issues/19741
     "^VTK::FiltersVerdictCxx-TestCellQuality$"
     )
@@ -608,7 +616,6 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "^wasm(32|64)")
     # see https://gitlab.kitware.com/vtk/vtk/-/issues/19921
     "^VTK::RenderingCoreCxx-WebGPU-TestAreaSelections$"
     "^VTK::RenderingCoreCxx-WebGPU-TestBackfaceTexture$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestBareScalarsToColors$"
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperBlockOpacities$"
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperBlockTextures$"
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperCameraShiftScale$"
@@ -620,13 +627,11 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "^wasm(32|64)")
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperSpheres$"
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperToggleScalarVisibilities$"
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperVertices$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestDirectScalarsToColors$"
     "^VTK::RenderingCoreCxx-WebGPU-TestEdgeFlags$"
     "^VTK::RenderingCoreCxx-WebGPU-TestEdgeOpacity$"
     "^VTK::RenderingCoreCxx-WebGPU-TestEdgeThickness$"
     "^VTK::RenderingCoreCxx-WebGPU-TestFollowerPicking$"
     "^VTK::RenderingCoreCxx-WebGPU-TestGlyph3DMapperBackfaceColor$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestGlyph3DMapperPicking$"
     "^VTK::RenderingCoreCxx-WebGPU-TestGlyph3DMapperPointSize$"
     "^VTK::RenderingCoreCxx-WebGPU-TestGlyph3DMapperTreeIndexing$"
     "^VTK::RenderingCoreCxx-WebGPU-TestGradientBackground$"
@@ -637,8 +642,6 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "^wasm(32|64)")
     "^VTK::RenderingCoreCxx-WebGPU-TestLabeledContourMapper$"
     "^VTK::RenderingCoreCxx-WebGPU-TestLabeledContourMapperNoLabels$"
     "^VTK::RenderingCoreCxx-WebGPU-TestLabeledContourMapperWithActorMatrix$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestMapVectorsAsRGBColors$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestMapVectorsToColors$"
     "^VTK::RenderingCoreCxx-WebGPU-TestMixedGeometryCellScalars$"
     "^VTK::RenderingCoreCxx-WebGPU-TestOffAxisStereo$"
     "^VTK::RenderingCoreCxx-WebGPU-TestOpacity$"
@@ -651,7 +654,6 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "^wasm(32|64)")
     "^VTK::RenderingCoreCxx-WebGPU-TestRenderLinesAsTubes$"
     "^VTK::RenderingCoreCxx-WebGPU-TestRenderLinesAsTubesOrthoCamera$"
     "^VTK::RenderingCoreCxx-WebGPU-TestResizingWindowToImageFilter$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestSelectVisiblePoints$"
     "^VTK::RenderingCoreCxx-WebGPU-TestSplitViewportStereoHorizontal$"
     "^VTK::RenderingCoreCxx-WebGPU-TestStereoBackgroundLeft$"
     "^VTK::RenderingCoreCxx-WebGPU-TestStereoBackgroundRight$"
@@ -660,7 +662,6 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "^wasm(32|64)")
     "^VTK::RenderingCoreCxx-WebGPU-TestTexturedCylinder$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTextureSize$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTextureWrap$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestTilingCxx$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTransformCoordinateUseDouble$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTranslucentImageActorAlphaBlending$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTranslucentImageActorDepthPeeling$"
@@ -678,6 +679,7 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "^wasm(32|64)")
     "^VTK::RenderingOpenGL2Cxx-TestCompositeDataPointGaussian$"
     "^VTK::RenderingOpenGL2Cxx-TestCompositeDataPointGaussianSelection$"
     "^VTK::RenderingOpenGL2Cxx-TestFlipRenderFramebuffer$"
+    "^VTK::RenderingOpenGL2Cxx-TestFluidMapper$"
     "^VTK::RenderingOpenGL2Cxx-TestFramebufferHDR$" # flaky
     "^VTK::RenderingOpenGL2Cxx-TestGaussianBlurPass$"
     "^VTK::RenderingOpenGL2Cxx-TestGlyph3DMapperEdges$"
@@ -695,12 +697,13 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "^wasm(32|64)")
     "^VTK::RenderingOpenGL2Cxx-TestProgramPointSize$"
     "^VTK::RenderingOpenGL2Cxx-TestRemoveActorNonCurrentContext$"
     "^VTK::RenderingOpenGL2Cxx-TestDirectSelectionRendering$"
+    "^VTK::RenderingOpenGL2Cxx-TestSkyboxRotation$"
+    "^VTK::RenderingOpenGL2Cxx-TestSkyboxRotationVectors$"
     "^VTK::RenderingOpenGL2Cxx-TestSimpleMotionBlur$" # flaky
     "^VTK::RenderingOpenGL2Cxx-TestSpherePoints$"
     "^VTK::RenderingOpenGL2Cxx-TestSphereVertex$"
     "^VTK::RenderingOpenGL2Cxx-TestSurfaceInterpolationSwitch$"
     "^VTK::RenderingOpenGL2Cxx-TestTexture16Bits$"
-    "^VTK::RenderingOpenGL2Cxx-TestTextureBufferEmulation$"
     "^VTK::RenderingOpenGL2Cxx-TestValuePassFloatingPoint$"
     "^VTK::RenderingOpenGL2Cxx-TestValuePassFloatingPoint2$"
     "^VTK::RenderingOpenGL2Cxx-TestVBOPLYMapper$"
@@ -713,7 +716,6 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "fedora42_x86_64_webgpu")
     # see https://gitlab.kitware.com/vtk/vtk/-/issues/19921
     "^VTK::RenderingCoreCxx-WebGPU-TestAreaSelections$"
     "^VTK::RenderingCoreCxx-WebGPU-TestBackfaceTexture$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestBareScalarsToColors$"
     "^VTK::RenderingCoreCxx-WebGPU-TestBlockOpacity$"
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperBlockOpacities$"
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperBlockTextures$"
@@ -726,7 +728,6 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "fedora42_x86_64_webgpu")
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperSpheres$"
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperToggleScalarVisibilities$"
     "^VTK::RenderingCoreCxx-WebGPU-TestCompositePolyDataMapperVertices$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestDirectScalarsToColors$"
     "^VTK::RenderingCoreCxx-WebGPU-TestEdgeFlags$"
     "^VTK::RenderingCoreCxx-WebGPU-TestEdgeOpacity$"
     "^VTK::RenderingCoreCxx-WebGPU-TestEdgeThickness$"
@@ -742,8 +743,6 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "fedora42_x86_64_webgpu")
     "^VTK::RenderingCoreCxx-WebGPU-TestLabeledContourMapper$"
     "^VTK::RenderingCoreCxx-WebGPU-TestLabeledContourMapperNoLabels$"
     "^VTK::RenderingCoreCxx-WebGPU-TestLabeledContourMapperWithActorMatrix$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestMapVectorsAsRGBColors$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestMapVectorsToColors$"
     "^VTK::RenderingCoreCxx-WebGPU-TestMixedGeometryCellScalars$"
     "^VTK::RenderingCoreCxx-WebGPU-TestOffAxisStereo$"
     "^VTK::RenderingCoreCxx-WebGPU-TestOpacity$"
@@ -764,7 +763,6 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "fedora42_x86_64_webgpu")
     "^VTK::RenderingCoreCxx-WebGPU-TestTexturedCylinder$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTextureSize$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTextureWrap$"
-    "^VTK::RenderingCoreCxx-WebGPU-TestTilingCxx$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTransformCoordinateUseDouble$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTranslucentImageActorAlphaBlending$"
     "^VTK::RenderingCoreCxx-WebGPU-TestTranslucentImageActorDepthPeeling$"
@@ -778,6 +776,13 @@ if ("$ENV{CMAKE_CONFIGURATION}" MATCHES "fedora42_x86_64_webgpu")
     "^VTK::RenderingCoreCxx-WebGPU-TestTStripsTCoords$"
     "^VTK::RenderingCoreCxx-WebGPU-TestVertexVisibility$"
     "^VTK::RenderingCoreCxx-WebGPU-TestWindowToImageFilter$"
+    # RenderingLabelCxx tests that fail with WebGPU.
+    # see https://gitlab.kitware.com/vtk/vtk/-/issues/19921
+    "^VTK::RenderingLabelCxx-WebGPU-TestLabelPlacementMapper2D$"
+    "^VTK::RenderingLabelCxx-WebGPU-TestLabelPlacementMapperCoincidentPoints$"
+    "^VTK::RenderingLabelCxx-WebGPU-TestLabelPlacer$"
+    "^VTK::RenderingLabelCxx-WebGPU-TestLabelPlacementMapper$"
+    "^VTK::RenderingLabelCxx-WebGPU-TestClipLabels$"
     # Crashes randomly with mesa-vulkan-drivers
     "^VTK::RenderingWebGPUCxx-TestComputeFrustumCulling$")
 endif ()

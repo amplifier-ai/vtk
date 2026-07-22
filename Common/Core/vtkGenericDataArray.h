@@ -22,7 +22,6 @@
  * - [public] ValueType GetTypedComponent(vtkIdType tupleIdx, int compIdx) const
  * - [public] void SetTypedComponent(vtkIdType tupleIdx, int compIdx,
  *                                   ValueType value)
- * - [protected] bool AllocateTuples(vtkIdType numTuples)
  * - [protected] bool ReallocateTuples(vtkIdType numTuples)
  *
  * Note that these methods use the CRTP idiom, which provides static binding to
@@ -57,7 +56,7 @@
 #include "vtkDataArray.h"
 
 #include "vtkCompiler.h"    // for VTK_USE_EXTERN_TEMPLATE
-#include "vtkDeprecation.h" // For VTK_DEPRECATED_IN_9_6_0
+#include "vtkDeprecation.h" // for VTK_DEPRECATED_IN_9_7_0
 #include "vtkGenericDataArrayLookupHelper.h"
 #include "vtkSmartPointer.h"
 #include "vtkTypeTraits.h"
@@ -79,15 +78,6 @@ public:
   using ArrayTypeTag = std::integral_constant<int, ArrayType>;
   using DataTypeTag = std::integral_constant<int, vtkTypeTraits<ValueTypeT>::VTK_TYPE_ID>;
   using ValueType = ValueTypeT;
-
-  /**
-   * Compile time access to the VTK type identifier.
-   */
-  enum
-  {
-    VTK_DATA_TYPE VTK_DEPRECATED_IN_9_6_0("Use DataTypeTag::value") =
-      vtkTypeTraits<ValueType>::VTK_TYPE_ID
-  };
 
   /// @defgroup vtkGDAConceptMethods vtkGenericDataArray Concept Methods
   /// These signatures must be reimplemented in subclasses as public,
@@ -182,8 +172,11 @@ public:
   void SetVoidArray(void*, vtkIdType, int) override;
   void SetVoidArray(void*, vtkIdType, int, int) override;
   void SetArrayFreeFunction(void (*callback)(void*)) override;
+  VTK_DEPRECATED_IN_9_7_0("Use vtkAOSDataArrayTemplate::WritePointer(valueIdx, numValues) or "
+                          "vtkAbstractArray::SetNumberOf[Values/Tuples]() instead")
   void* WriteVoidPointer(vtkIdType valueIdx, vtkIdType numValues) override;
-  VTK_DEPRECATED_IN_9_7_0("Use vtkAOSDataArrayTemplate::WritePointer(valueIdx, numValues) instead")
+  VTK_DEPRECATED_IN_9_7_0("Use vtkAOSDataArrayTemplate::WritePointer(valueIdx, numValues) or "
+                          "vtkAbstractArray::SetNumberOf[Values/Tuples]() instead")
   ValueType* WritePointer(vtkIdType valueIdx, vtkIdType numValues);
   ///@}
 
@@ -260,13 +253,6 @@ public:
   /**@}*/
 
   /**
-   * Return the capacity in typeof T units of the current array.
-   * Leftover from vtkDataArrayTemplate, redundant with GetSize.
-   */
-  VTK_DEPRECATED_IN_9_6_0("Use GetSize() instead")
-  vtkIdType Capacity() { return this->Size; }
-
-  /**
    * Set component @a comp of all tuples to @a value.
    */
   virtual void FillTypedComponent(int compIdx, ValueType value);
@@ -293,11 +279,8 @@ public:
   ValueType GetDataTypeValueMax() const;
   int GetDataTypeSize() const override;
   bool HasStandardMemoryLayout() const override;
-  vtkTypeBool Allocate(vtkIdType size, vtkIdType ext = 1000) override;
-  vtkTypeBool Resize(vtkIdType numTuples) override;
+  vtkTypeBool ReserveTuples(vtkIdType numTuples) override;
   void SetNumberOfComponents(int num) override;
-  void SetNumberOfTuples(vtkIdType number) override;
-  void Initialize() override;
   void Squeeze() override;
   void SetTuple(vtkIdType dstTupleIdx, vtkIdType srcTupleIdx, vtkAbstractArray* source) override;
   // MSVC doesn't like 'using' here (error C2487). Just forward instead:
@@ -355,16 +338,6 @@ public:
 protected:
   vtkGenericDataArray();
   ~vtkGenericDataArray() override;
-
-  /**
-   * Allocate space for numTuples. Old data is not preserved. If numTuples == 0,
-   * all data is freed.
-   * @ingroup vtkGDAConceptMethods
-   */
-  bool AllocateTuples(vtkIdType numTuples)
-  {
-    return static_cast<DerivedT*>(this)->AllocateTuples(numTuples);
-  }
 
   /**
    * Allocate space for numTuples. Old data is preserved. If numTuples == 0,
@@ -447,15 +420,41 @@ private:
 };
 VTK_ABI_NAMESPACE_END
 
-// Forward declare necessary stuffs:
-VTK_ABI_NAMESPACE_BEGIN
-template <typename ValueType>
-class vtkAOSDataArrayTemplate;
-template <typename ValueType>
-class vtkSOADataArrayTemplate;
-template <typename ValueType>
-class vtkScaledSOADataArrayTemplate;
-VTK_ABI_NAMESPACE_END
+// These macros define the vtkGenericDataArray methods that aren't redefined
+// in vtkAOSDataArrayTemplate and vtkSOADataArrayTemplate.  The wrappers do
+// not see vtkGenericDataArray as a superclass of AOS/SOA arrays, so these
+// macros are used to fill in the missing parts of the inherited interface.
+#define vtkCreateGenericWrappedArrayReadInterface(T)                                               \
+  int GetDataType() const override;                                                                \
+  T GetDataTypeValueMin() const;                                                                   \
+  T GetDataTypeValueMax() const;                                                                   \
+  T* GetValueRange(int comp) VTK_SIZEHINT(2);                                                      \
+  T* GetValueRange() VTK_SIZEHINT(2);                                                              \
+  void GetValueRange(T range[2], int comp);
+#define vtkCreateGenericWrappedArrayWriteInterface(T)                                              \
+  void InsertTypedTuple(vtkIdType i, const T* tuple) VTK_EXPECTS(0 <= i);                          \
+  vtkIdType InsertNextTypedTuple(const T* tuple);                                                  \
+  void InsertValue(vtkIdType id, T f) VTK_EXPECTS(0 <= id);                                        \
+  vtkIdType InsertNextValue(T f);
+#define vtkCreateGenericWrappedArrayInterface(T)                                                   \
+  vtkCreateGenericWrappedArrayReadInterface(T);                                                    \
+  vtkCreateGenericWrappedArrayWriteInterface(T);
+
+// This macro is used by the subclasses to create dummy
+// declarations for these functions such that the wrapper
+// can see them. The wrappers ignore vtkGenericDataArray.
+#define vtkCreateWrappedArrayReadInterface(T)                                                      \
+  vtkCreateGenericWrappedArrayReadInterface(T);                                                    \
+  void GetTypedTuple(vtkIdType i, T* tuple) VTK_EXPECTS(0 <= i && i < GetNumberOfTuples());        \
+  T GetTypedComponent(vtkIdType i, int c) const VTK_EXPECTS(0 <= c && c < GetNumberOfComponents()) \
+    VTK_EXPECTS(0 <= i && GetNumberOfComponents() * i + c < GetNumberOfValues());                  \
+  T GetValue(vtkIdType id) const VTK_EXPECTS(0 <= id && id < GetNumberOfValues());
+#define vtkCreateWrappedArrayWriteInterface(T)                                                     \
+  vtkCreateGenericWrappedArrayWriteInterface(T);                                                   \
+  void SetTypedTuple(vtkIdType i, const T* tuple) VTK_EXPECTS(0 <= i && i < GetNumberOfTuples());  \
+  void SetTypedComponent(vtkIdType i, int c, T value);                                             \
+  void SetValue(vtkIdType id, T value) VTK_EXPECTS(0 <= id && id < GetNumberOfValues());           \
+  bool SetNumberOfValues(vtkIdType number) override;
 
 #define VTK_INSTANTIATE_VALUERANGE_ARRAYTYPE(ArrayType, ValueType)                                 \
   template VTKCOMMONCORE_EXPORT bool DoComputeScalarRange(                                         \
@@ -466,11 +465,6 @@ VTK_ABI_NAMESPACE_END
     vtkDataArrayPrivate::AllValues, const unsigned char*, unsigned char);                          \
   template VTKCOMMONCORE_EXPORT bool DoComputeVectorRange(ArrayType*, ValueType[2],                \
     vtkDataArrayPrivate::FiniteValues, const unsigned char*, unsigned char);
-
-#define VTK_INSTANTIATE_VALUERANGE_VALUETYPE(ValueType)                                            \
-  VTK_INSTANTIATE_VALUERANGE_ARRAYTYPE(vtkAOSDataArrayTemplate<ValueType>, ValueType)              \
-  VTK_INSTANTIATE_VALUERANGE_ARRAYTYPE(vtkSOADataArrayTemplate<ValueType>, ValueType)              \
-  VTK_INSTANTIATE_VALUERANGE_ARRAYTYPE(vtkScaledSOADataArrayTemplate<ValueType>, ValueType)
 
 namespace vtkDataArrayPrivate
 {
@@ -496,11 +490,6 @@ VTK_ABI_NAMESPACE_END
     vtkDataArrayPrivate::AllValues, const unsigned char*, unsigned char);                          \
   extern template VTKCOMMONCORE_EXPORT bool DoComputeVectorRange(ArrayType*, ValueType[2],         \
     vtkDataArrayPrivate::FiniteValues, const unsigned char*, unsigned char);
-
-#define VTK_DECLARE_VALUERANGE_VALUETYPE(ValueType)                                                \
-  VTK_DECLARE_VALUERANGE_ARRAYTYPE(vtkAOSDataArrayTemplate<ValueType>, ValueType)                  \
-  VTK_DECLARE_VALUERANGE_ARRAYTYPE(vtkSOADataArrayTemplate<ValueType>, ValueType)                  \
-  VTK_DECLARE_VALUERANGE_ARRAYTYPE(vtkScaledSOADataArrayTemplate<ValueType>, ValueType)
 
 #include "vtkGenericDataArray.txx"
 
@@ -528,11 +517,8 @@ public:
 // This is used to tell libraries other than vtkCommonCore that instantiations of
 // the GetValueRange lookups can be found externally. This prevents each library
 // from instantiating these on their own.
-// Additionally it helps hide implementation details that pull in system
+// Additionally, it helps hide implementation details that pull in system
 // headers.
-// We only provide these specializations for the 64-bit integer types, since
-// other types can reuse the double-precision mechanism in
-// vtkDataArray::GetRange without losing precision.
 #ifdef VTK_USE_EXTERN_TEMPLATE
 
 #ifndef VTK_GDA_TEMPLATE_EXTERN
@@ -544,26 +530,9 @@ public:
 #pragma warning(disable : 4910) // extern and dllexport incompatible
 #endif
 
-VTK_ABI_NAMESPACE_BEGIN
-// Forward declare necessary stuffs:
-template <typename ValueType>
-class vtkAOSDataArrayTemplate;
-template <typename ValueType>
-class vtkSOADataArrayTemplate;
-template <typename ValueType>
-class vtkScaledSOADataArrayTemplate;
-
-VTK_ABI_NAMESPACE_END
-
 namespace vtkDataArrayPrivate
 {
 VTK_ABI_NAMESPACE_BEGIN
-// These are instantiated in vtkGenericDataArrayValueRange${i}.cxx
-VTK_DECLARE_VALUERANGE_VALUETYPE(long)
-VTK_DECLARE_VALUERANGE_VALUETYPE(unsigned long)
-VTK_DECLARE_VALUERANGE_VALUETYPE(long long)
-VTK_DECLARE_VALUERANGE_VALUETYPE(unsigned long long)
-
 // This is instantiated in vtkGenericDataArray.cxx
 VTK_DECLARE_VALUERANGE_ARRAYTYPE(vtkDataArray, double)
 
@@ -575,6 +544,6 @@ VTK_ABI_NAMESPACE_END
 #endif
 #endif // VTK_GDA_TEMPLATE_EXTERN
 
-#endif // VTK_GDA_VALUERANGE_INSTANTIATING
+#endif // VTK_USE_EXTERN_TEMPLATE
 
 // VTK-HeaderTest-Exclude: vtkGenericDataArray.h

@@ -1,8 +1,6 @@
 set(classes
   vtkAMRBox
-  vtkAMRDataInternals # VTK_DEPRECATED_IN_9_6_0
   vtkAMRDataObject
-  vtkAMRInformation
   vtkAMRMetaData
   vtkAMRUtilities
   vtkAbstractCellArray
@@ -47,6 +45,7 @@ set(classes
   vtkCellGridCopyQuery
   vtkCellGridEvaluator
   vtkCellGridQuery
+  vtkCellGridSummaryInformationQuery
   vtkCellGridRangeQuery
   vtkCellGridResponders
   vtkCellGridSidesCache
@@ -150,6 +149,7 @@ set(classes
   vtkIncrementalPointLocator
   vtkInformationQuadratureSchemeDefinitionVectorKey
   vtkIterativeClosestPointTransform
+  vtkJumpAndWalkCellLocator
   vtkKdNode
   vtkKdTree
   vtkKdTreePointLocator
@@ -162,6 +162,7 @@ set(classes
   vtkLagrangeWedge
   vtkLine
   vtkLocator
+  vtkMarchingCellsContourCases
   vtkMarchingCubesPolygonCases
   vtkMarchingCubesTriangleCases
   vtkMarchingSquaresLineCases
@@ -173,6 +174,7 @@ set(classes
   vtkMutableDirectedGraph
   vtkMutableUndirectedGraph
   vtkNonLinearCell
+  vtkNonLinearCell3D
   vtkNonMergingPointLocator
   vtkNonOverlappingAMR
   vtkOctreePointLocator
@@ -259,7 +261,6 @@ set(classes
   vtkUndirectedGraph
   vtkUniformGrid
   vtkUniformGridAMR
-  vtkUniformGridAMRDataIterator
   vtkUniformGridAMRIterator
   vtkUniformHyperTreeGrid
   vtkUnstructuredGrid
@@ -287,7 +288,8 @@ set(nowrap_classes
   vtkHyperTreeGridGeometryUnlimitedEntry
   vtkHyperTreeGridGeometryLevelEntry
   vtkHyperTreeGridGeometryUnlimitedLevelEntry
-  vtkHyperTreeGridLevelEntry)
+  vtkHyperTreeGridLevelEntry
+  vtkPolyhedronContour)
 
 set(headers
   vtkCellGridResponder.h
@@ -311,6 +313,7 @@ set(nowrap_headers
   vtkDataObjectImplicitBackendInterface.h
   vtkDataObjectTreeRange.h
   vtkPolyDataInternals.h
+  vtkMarchingCellsClipCases.h
   vtkStaticPointLocator2DPrivate.h
   vtkStaticPointLocatorPrivate.h)
 

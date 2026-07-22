@@ -1376,7 +1376,6 @@ private:
 };
 
 vtkCxxSetObjectMacro(vtkPStreamTracer, Controller, vtkMultiProcessController);
-vtkCxxSetObjectMacro(vtkPStreamTracer, Interpolator, vtkAbstractInterpolatedVelocityField);
 vtkStandardNewMacro(vtkPStreamTracer);
 
 //------------------------------------------------------------------------------
@@ -1385,7 +1384,6 @@ vtkPStreamTracer::vtkPStreamTracer()
   this->Controller = nullptr;
   this->SetController(vtkMultiProcessController::GetGlobalController());
 
-  this->Interpolator = nullptr;
   this->GenerateNormalsInIntegrate = false;
 
   this->EmptyData = 0;
@@ -1399,7 +1397,6 @@ vtkPStreamTracer::vtkPStreamTracer()
 vtkPStreamTracer::~vtkPStreamTracer()
 {
   this->SetController(nullptr);
-  this->SetInterpolator(nullptr);
 }
 
 //------------------------------------------------------------------------------
@@ -1523,8 +1520,6 @@ int vtkPStreamTracer::RequestData(
   else
   {
     func->SetCaching(false);
-    this->SetInterpolator(func);
-    func->Delete();
   }
 
   if (vtkOverlappingAMR::SafeDownCast(this->InputData))
@@ -1549,10 +1544,8 @@ int vtkPStreamTracer::RequestData(
 
   Task* task(nullptr);
   std::vector<int> traceIds;
-  int iterations = 0;
   while ((task = taskManager.NextTask()))
   {
-    iterations++;
     PStreamTracerPoint* point = task->GetPoint();
 
     vtkSmartPointer<vtkPolyData> traceOut;
@@ -1650,6 +1643,11 @@ int vtkPStreamTracer::RequestData(
         }
       });
   }
+  if (func)
+  {
+    func->Delete();
+    func = nullptr;
+  }
 
 #ifdef DEBUGTRACE
   int maxSeeds(maxId + 1);
@@ -1697,7 +1695,6 @@ int vtkPStreamTracer::RequestData(
   }
 
 #endif
-  PRINT("Done in " << iterations << " iterations");
 
   traceOutputs.erase(traceOutputs.begin(), traceOutputs.end());
   return 1;

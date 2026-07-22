@@ -307,7 +307,7 @@ public:
       BLEND
     };
 
-    struct PbrMetallicRoughness
+    struct PbrMetallicRoughnessType
     {
       TextureInfo BaseColorTexture;
       std::vector<double> BaseColorFactor;
@@ -317,7 +317,7 @@ public:
       float RoughnessFactor;
     };
 
-    PbrMetallicRoughness PbrMetallicRoughness;
+    PbrMetallicRoughnessType PbrMetallicRoughness;
 
     TextureInfo NormalTexture;
     double NormalTextureScale;
@@ -335,6 +335,9 @@ public:
 
     // extension KHR_materials_unlit
     bool Unlit;
+
+    // extension KHR_materials_ior
+    double IOR;
   };
 
   /**

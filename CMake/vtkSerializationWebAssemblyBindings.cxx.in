@@ -148,13 +148,17 @@ EMSCRIPTEN_BINDINGS(bindings)
     .function("destroy", &vtkStandaloneSession::Destroy)
     .function("set", &vtkStandaloneSession::Set)
     .function("get", &vtkStandaloneSession::Get)
-#if _vtk_serdes_ASYNC
-    .function("invoke", &vtkStandaloneSession::Invoke, async())
-#else
     .function("invoke", &vtkStandaloneSession::Invoke)
+#if _vtk_serdes_ASYNC
+    // Async entry point for methods hinted with [[vtk::maysuspend]]. Shares the
+    // same C++ implementation but runs on a JSPI-suspendable stack, so it can
+    // await WebGPU (or other async) work and returns a Promise to JavaScript.
+    .function("invokeAsync", &vtkStandaloneSession::Invoke, async())
 #endif
     .function("observe", &vtkStandaloneSession::Observe)
     .function("unObserve", &vtkStandaloneSession::UnObserve)
+    .function("unObserveAll", &vtkStandaloneSession::UnObserveAll)
+    .function("unObserveAllObjects", &vtkStandaloneSession::UnObserveAllObjects)
     .function("getTotalBlobMemoryUsage", &vtkStandaloneSession::GetTotalBlobMemoryUsage)
     .function(
       "getTotalVTKDataObjectMemoryUsage", &vtkStandaloneSession::GetTotalVTKDataObjectMemoryUsage)
@@ -177,10 +181,12 @@ EMSCRIPTEN_BINDINGS(bindings)
     .function("registerBlob", &vtkRemoteSession::RegisterBlob)
     .function("unRegisterBlob", &vtkRemoteSession::UnRegisterBlob)
     .function("getBlob", &vtkRemoteSession::GetBlob)
-#if _vtk_serdes_ASYNC
-    .function("invoke", &vtkRemoteSession::Invoke, async())
-#else
     .function("invoke", &vtkRemoteSession::Invoke)
+#if _vtk_serdes_ASYNC
+    // Async entry point for methods hinted with [[vtk::maysuspend]]. Shares the
+    // same C++ implementation but runs on a JSPI-suspendable stack, so it can
+    // await WebGPU (or other async) work and returns a Promise to JavaScript.
+    .function("invokeAsync", &vtkRemoteSession::Invoke, async())
 #endif
     .function("getAllDependencies", &vtkRemoteSession::GetAllDependencies)
     .function("updateObjectFromState", &vtkRemoteSession::UpdateObjectFromState)
@@ -197,6 +203,8 @@ EMSCRIPTEN_BINDINGS(bindings)
     .function("bindRenderWindow", &vtkRemoteSession::BindRenderWindow)
     .function("observe", &vtkRemoteSession::Observe)
     .function("unObserve", &vtkRemoteSession::UnObserve)
+    .function("unObserveAll", &vtkRemoteSession::UnObserveAll)
+    .function("unObserveAllObjects", &vtkRemoteSession::UnObserveAllObjects)
     .function("export", &vtkRemoteSession::Export)
     .function("import", &vtkRemoteSession::Import)
     .function("updateObjectsFromStates", &vtkRemoteSession::UpdateObjectsFromStates)
@@ -206,11 +214,14 @@ EMSCRIPTEN_BINDINGS(bindings)
     .function("getTotalBlobMemoryUsage", &vtkRemoteSession::GetTotalBlobMemoryUsage)
     .function(
       "getTotalVTKDataObjectMemoryUsage", &vtkRemoteSession::GetTotalVTKDataObjectMemoryUsage)
+    .function("printObjectToString", &vtkRemoteSession::PrintObjectToString)
     .function("printSceneManagerInformation", &vtkRemoteSession::PrintSceneManagerInformation)
     .function("setDeserializerLogVerbosity", &vtkRemoteSession::SetDeserializerLogVerbosity)
     .function("setInvokerLogVerbosity", &vtkRemoteSession::SetInvokerLogVerbosity)
     .function("setObjectManagerLogVerbosity", &vtkRemoteSession::SetObjectManagerLogVerbosity)
-    .function("setSerializerLogVerbosity", &vtkRemoteSession::SetSerializerLogVerbosity);
+    .function("setSerializerLogVerbosity", &vtkRemoteSession::SetSerializerLogVerbosity)
+    .function("startWebXR", &vtkRemoteSession::StartWebXR)
+    .function("stopWebXR", &vtkRemoteSession::StopWebXR);
 }
 
 VTK_ABI_NAMESPACE_END

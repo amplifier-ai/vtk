@@ -479,7 +479,9 @@ protected:
   vtkMPIController();
   ~vtkMPIController() override;
 
-  // Set the communicator to comm and call InitializeNumberOfProcesses()
+  /**
+   * Set the communicator to comm. Also calls vtkMPICommunicator::InitializeAttributes.
+   */
   void InitializeCommunicator(vtkMPICommunicator* comm);
 
   // Duplicate the current communicator, creating RMICommunicator

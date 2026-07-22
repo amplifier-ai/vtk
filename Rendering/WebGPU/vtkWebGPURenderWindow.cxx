@@ -31,8 +31,9 @@
 #include "vtkWaylandHardwareWindow.h"
 #elif VTK_USE_X
 #include "vtkXlibHardwareWindow.h"
-#endif // _WIN32, __APPLE__, VTK_USE_Wayland, Xlib
-#else  // __EMSCRIPTEN__
+#include <unistd.h> // for close()
+#endif              // _WIN32, __APPLE__, VTK_USE_Wayland, Xlib
+#else               // __EMSCRIPTEN__
 #include "vtkWebAssemblyHardwareWindow.h"
 #endif // !__EMSCRIPTEN__
 
@@ -110,10 +111,6 @@ vtkWebGPURenderWindow::vtkWebGPURenderWindow()
 vtkWebGPURenderWindow::~vtkWebGPURenderWindow()
 {
   this->Finalize();
-  if (this->Initialized)
-  {
-    this->WGPUFinalize();
-  }
   this->ReleaseGraphicsResources(this);
 
   vtkRenderer* renderer;
@@ -180,7 +177,7 @@ void vtkWebGPURenderWindow::CreateSurface()
 #elif _WIN32
   if (auto* win32hw = vtkWin32HardwareWindow::SafeDownCast(this->HardwareWindow))
   {
-    wgpu::SurfaceDescriptorFromWindowsHWND winSurfDesc;
+    wgpu::SurfaceSourceWindowsHWND winSurfDesc;
     winSurfDesc.hwnd = win32hw->GetWindowId();
     winSurfDesc.hinstance = win32hw->GetApplicationInstance();
     wgpu::SurfaceDescriptor surfDesc = {};
@@ -191,7 +188,7 @@ void vtkWebGPURenderWindow::CreateSurface()
 #elif defined VTK_USE_Wayland
   if (auto* waylandhw = vtkWaylandHardwareWindow::SafeDownCast(this->HardwareWindow))
   {
-    wgpu::SurfaceDescriptorFromWaylandSurface waylandSurfDesc;
+    wgpu::SurfaceSourceWaylandSurface waylandSurfDesc;
     waylandSurfDesc.surface = waylandhw->GetWindowId();
     waylandSurfDesc.display = waylandhw->GetDisplayId();
     wgpu::SurfaceDescriptor surfDesc = {};
@@ -202,7 +199,7 @@ void vtkWebGPURenderWindow::CreateSurface()
 #elif defined __APPLE__
   if (auto* cocoahw = vtkCocoaHardwareWindow::SafeDownCast(this->HardwareWindow))
   {
-    wgpu::SurfaceDescriptorFromMetalLayer metalSurfDesc;
+    wgpu::SurfaceSourceMetalLayer metalSurfDesc;
     metalSurfDesc.layer = cocoahw->GetMetalLayer();
     wgpu::SurfaceDescriptor surfDesc = {};
     surfDesc.label = "VTK Cocoa surface";
@@ -213,7 +210,7 @@ void vtkWebGPURenderWindow::CreateSurface()
   if (auto* xlibhw = vtkXlibHardwareWindow::SafeDownCast(this->HardwareWindow))
   {
     xlibhw->SetWindowName("VTK Xlib window");
-    wgpu::SurfaceDescriptorFromXlibWindow xlibSurfDesc;
+    wgpu::SurfaceSourceXlibWindow xlibSurfDesc;
     xlibSurfDesc.display = xlibhw->GetDisplayId();
     xlibSurfDesc.window = xlibhw->GetWindowId();
     wgpu::SurfaceDescriptor surfDesc = {};
@@ -243,6 +240,12 @@ void vtkWebGPURenderWindow::Initialize()
 }
 
 //------------------------------------------------------------------------------
+void vtkWebGPURenderWindow::Finalize()
+{
+  this->WGPUFinalize();
+}
+
+//------------------------------------------------------------------------------
 void vtkWebGPURenderWindow::WGPUFinalize()
 {
   vtkDebugMacro(<< __func__ << " Initialized=" << this->Initialized);
@@ -252,8 +255,97 @@ void vtkWebGPURenderWindow::WGPUFinalize()
     return;
   }
   this->ReleaseGraphicsResources(this);
-  this->WGPUConfiguration->Finalize();
+
+  // x11 display cleanup ordering
+  //
+  // NVIDIA's Vulkan driver defers GLX extension initialization until device
+  // destruction time. During this deferred initialization, the driver modifies
+  // X11 Display state (e.g., registering close_display handlers). If the Display
+  // is already closed before Vulkan finalization, the driver attempts to access
+  // freed memory, causing a segmentation fault in XCloseDisplay().
+  //
+  // Minimal repro example shared with NVIDIA: https://github.com/sankhesh/nvidia-vulkan-reproducer
+  //
+  // The correct cleanup sequence on X11 is:
+  //   1. DestroyWindow()    — destroy the X11 window (keep Display open)
+  //   2. FinalizeDevice()   — destroy Vulkan device/adapter; instance stays alive
+  //                           so the ICD shared library remains loaded
+  //   3. CloseDisplay()     — call XCloseDisplay() while the ICD is still in memory
+  //                           (its close_display handlers are therefore still valid)
+  //   4. Finalize()         — destroy the Vulkan instance; the Vulkan loader
+  //                           dlclose()s the ICD — Display already closed, safe
+  //
+  // We prevent DestroyWindow() from also closing the Display (it would, because
+  // vtkXlibHardwareWindow::Destroy() always calls CloseDisplay() at its end) by
+  // temporarily setting OwnDisplay=false before the call and restoring it after.
+  // The destructor's guard (WindowId != 0) would skip CloseDisplay() anyway since
+  // DestroyWindow() zeroes WindowId, so we must call CloseDisplay() explicitly.
+
+#if defined(VTK_USE_X)
+  bool savedOwnDisplay = false;
+  bool isNVIDIA = false; // queried now, before the adapter is destroyed
+  vtkXlibHardwareWindow* xlibWindowPtr = nullptr;
+  if (auto xlibWindow = vtkXlibHardwareWindow::SafeDownCast(this->HardwareWindow))
+  {
+    xlibWindowPtr = xlibWindow;
+    savedOwnDisplay = xlibWindow->GetOwnDisplay();
+    isNVIDIA = this->WGPUConfiguration->IsNVIDIAGPUInUse();
+    // Prevent DestroyWindow() → Destroy() → CloseDisplay() from firing.
+    xlibWindow->SetOwnDisplay(false);
+  }
+#endif // VTK_USE_X
+
+  // Destroy the X11 window (Display connection is still open).
   this->DestroyWindow();
+
+  // Destroy Vulkan device/adapter; keep the instance alive so the ICD
+  // library (and its close_display handlers) remain loaded in memory.
+  this->WGPUConfiguration->FinalizeDevice();
+
+  // Close the Display.
+  //
+  // === Begin workaround ===
+  // Instead of XCloseDisplay(), close the socket file descriptor
+  // directly. The X server sees the EOF and immediately releases the client
+  // slot (freeing the server-side slot and the per-process OS FD), but Xlib
+  // never iterates its close_display handler list — so the NVIDIA handler is
+  // never called. We clear DisplayId to prevent any later Xlib use.
+  //
+  // When the issue is fixed in the nvidia driver, remove the if/else below and
+  // replace with the unconditional call that is already used for non-NVIDIA:
+  //
+  //   if (xlibWindowPtr && savedOwnDisplay)
+  //   {
+  //     xlibWindowPtr->SetOwnDisplay(true);
+  //     xlibWindowPtr->CloseDisplay();
+  //   }
+  //
+  // Also remove the isNVIDIA variable above and the <unistd.h> include.
+#if defined(VTK_USE_X)
+  if (xlibWindowPtr && savedOwnDisplay)
+  {
+    if (isNVIDIA)
+    {
+      Display* dpy = xlibWindowPtr->GetDisplayId();
+      if (dpy)
+      {
+        close(ConnectionNumber(dpy));
+        xlibWindowPtr->SetDisplayId(static_cast<void*>(nullptr));
+      }
+    }
+    else
+    {
+      xlibWindowPtr->SetOwnDisplay(true);
+      xlibWindowPtr->CloseDisplay();
+    }
+  }
+  // === End workaround ===
+#endif // VTK_USE_X
+
+  // Finally, release the Vulkan instance — triggers vkDestroyInstance() and
+  // unloads the ICD. Display is already closed so no dangling handler fires.
+  this->WGPUConfiguration->Finalize();
+
   this->Initialized = false;
 }
 
@@ -471,7 +563,16 @@ void vtkWebGPURenderWindow::ConfigureSurface()
     config.device = this->GetDevice();
     config.width = this->Size[0];
     config.height = this->Size[1];
-    config.presentMode = wgpu::PresentMode::Fifo;
+    config.presentMode =
+      wgpu::PresentMode::Fifo; // fallback. this stalls GetCurrentTexture to VSync interval
+    for (std::size_t i = 0; i < capabilities.presentModeCount; ++i)
+    {
+      if (capabilities.presentModes[i] == wgpu::PresentMode::Mailbox)
+      {
+        config.presentMode = wgpu::PresentMode::Mailbox;
+        break;
+      }
+    }
     for (std::size_t i = 0; i < capabilities.formatCount; ++i)
     {
       config.format = capabilities.formats[i];
@@ -1103,98 +1204,85 @@ void vtkWebGPURenderWindow::RenderOffscreenTexture()
     vtkErrorMacro(<< "Cannot render offscreen texture because surface is null!");
     return;
   }
-  // prepare the offscreen texture for presentation.
   wgpu::SurfaceTexture surfaceTexture;
   this->Surface.GetCurrentTexture(&surfaceTexture);
-  switch (surfaceTexture.status)
-  {
-    case wgpu::SurfaceGetCurrentTextureStatus::Timeout:
-      vtkErrorMacro(
-        << "Cannot render offscreen texture because SurfaceGetCurrentTextureStatus=Timeout");
-      return;
-    case wgpu::SurfaceGetCurrentTextureStatus::Outdated:
-      vtkErrorMacro(
-        << "Cannot render offscreen texture because SurfaceGetCurrentTextureStatus=Outdated");
-      return;
-    case wgpu::SurfaceGetCurrentTextureStatus::Lost:
-      vtkErrorMacro(
-        << "Cannot render offscreen texture because SurfaceGetCurrentTextureStatus=Lost");
-      return;
-    case wgpu::SurfaceGetCurrentTextureStatus::Error:
-      vtkErrorMacro(
-        << "Cannot render offscreen texture because SurfaceGetCurrentTextureStatus=Error");
-      return;
-    case wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal:
-      // TODO: Warn exactly once per Initialize/Finalize duration.
-      vtkDebugMacro(<< "SurfaceTexture format is suboptimal!");
-      break;
-    case wgpu::SurfaceGetCurrentTextureStatus::SuccessOptimal:
-    default:
-      break;
-  }
+
+  // Early exit if surface did not give a texture
   if (surfaceTexture.texture == nullptr)
   {
-    vtkErrorMacro(<< "Cannot render offscreen texture because SurfaceTexture is null!");
-    return;
+    switch (surfaceTexture.status)
+    {
+      case wgpu::SurfaceGetCurrentTextureStatus::Timeout:
+      case wgpu::SurfaceGetCurrentTextureStatus::Lost:
+      case wgpu::SurfaceGetCurrentTextureStatus::Error:
+        vtkErrorMacro(<< "Cannot render offscreen texture because SurfaceGetCurrentTextureStatus="
+                      << static_cast<int>(surfaceTexture.status));
+        return;
+      case wgpu::SurfaceGetCurrentTextureStatus::Outdated:
+        // Surface configuration is outdated, likely due to window resize
+        vtkDebugMacro(<< "Surface texture is outdated, triggering reconfiguration");
+        // Trigger a reconfiguration and re-render
+        this->Modified();
+        return;
+      case wgpu::SurfaceGetCurrentTextureStatus::SuccessSuboptimal:
+      {
+        static bool warnOnce = false;
+        if (!warnOnce)
+        {
+          vtkWarningMacro(<< "Surface texture format is suboptimal!");
+          warnOnce = true;
+        }
+        break;
+      }
+      default:
+        break;
+    }
   }
-  if (this->ColorAttachment.Texture == nullptr)
+  else
   {
-    vtkErrorMacro(<< "Cannot render offscreen texture because the source color attachment "
-                     "texture is null!");
-    return;
+    // Validate surface texture dimensions match expected size
+    auto texWidth = surfaceTexture.texture.GetWidth();
+    auto texHeight = surfaceTexture.texture.GetHeight();
+    if (texWidth != static_cast<uint32_t>(this->SurfaceConfiguredSize[0]) ||
+      texHeight != static_cast<uint32_t>(this->SurfaceConfiguredSize[1]))
+    {
+      vtkDebugMacro(<< "Surface texture size (" << texWidth << "x" << texHeight
+                    << ") does not match configured size (" << this->SurfaceConfiguredSize[0] << "x"
+                    << this->SurfaceConfiguredSize[1] << "). Surface needs reconfiguration.");
+      // Surface size mismatch detected - this should trigger reconfiguration on next Start()
+      // Skip this frame
+      return;
+    }
   }
-  if (this->ColorCopyRenderPipeline.Key.empty())
+
+  if (this->ColorAttachment.Texture == nullptr || this->ColorCopyRenderPipeline.Key.empty() ||
+    this->ColorCopyRenderPipeline.BindGroup == nullptr || this->CommandEncoder == nullptr)
   {
-    vtkErrorMacro(<< "Cannot render offscreen texture because the full-screen-quad render "
-                     "pipeline is not ready!");
-    return;
-  }
-  if (this->ColorCopyRenderPipeline.BindGroup == nullptr)
-  {
-    vtkErrorMacro(<< "Cannot render offscreen texture because the full-screen-quad render bind "
-                     "group is null!");
-    return;
-  }
-  if (this->CommandEncoder == nullptr)
-  {
-    vtkErrorMacro(<< "Cannot render offscreen texture because the command encoder is null!");
+    vtkErrorMacro(<< "Cannot render offscreen texture: missing required resources");
     return;
   }
 
-  vtkWebGPURenderPassDescriptorInternals renderPassDescriptor(
-    { surfaceTexture.texture.CreateView() });
+  wgpu::TextureView surfaceView = surfaceTexture.texture.CreateView();
+  vtkWebGPURenderPassDescriptorInternals renderPassDescriptor({ surfaceView });
   renderPassDescriptor.label = "Render offscreen texture";
+  renderPassDescriptor.ColorAttachments[0].clearValue = { 0.0f, 0.0f, 0.0f, 1.0f };
 
-  for (auto& colorAttachment : renderPassDescriptor.ColorAttachments)
-  {
-    colorAttachment.clearValue.r = 0.0;
-    colorAttachment.clearValue.g = 0.0;
-    colorAttachment.clearValue.b = 0.0;
-    colorAttachment.clearValue.a = 1.0f;
-  }
   if (auto encoder = this->NewRenderPass(renderPassDescriptor))
   {
-    encoder.SetLabel("Encode offscreen texture render commands");
     encoder.SetViewport(
-      0, 0, this->SurfaceConfiguredSize[0], this->SurfaceConfiguredSize[1], 0.0, 1.0);
+      0, 0, this->SurfaceConfiguredSize[0], this->SurfaceConfiguredSize[1], 0.0f, 1.0f);
     encoder.SetScissorRect(0, 0, this->SurfaceConfiguredSize[0], this->SurfaceConfiguredSize[1]);
-    // set fsq pipeline
-    {
-      vtkScopedEncoderDebugGroup(encoder, "FSQ Render");
-      const auto pipeline =
-        this->WGPUPipelineCache->GetRenderPipeline(this->ColorCopyRenderPipeline.Key);
-      encoder.SetPipeline(pipeline);
-      // bind fsq group
-      encoder.SetBindGroup(0, this->ColorCopyRenderPipeline.BindGroup);
-      // draw triangle strip
-      encoder.Draw(4);
-    }
+
+    const auto pipeline =
+      this->WGPUPipelineCache->GetRenderPipeline(this->ColorCopyRenderPipeline.Key);
+    encoder.SetPipeline(pipeline);
+    encoder.SetBindGroup(0, this->ColorCopyRenderPipeline.BindGroup);
+    encoder.Draw(4);
     encoder.End();
   }
   else
   {
-    vtkErrorMacro(<< "Cannot render swapchain contents into offscreen texture because this render "
-                     "window failed to build a new render pass!");
+    vtkErrorMacro(<< "Failed to create render pass for offscreen texture");
     return;
   }
 }
@@ -2047,6 +2135,10 @@ void vtkWebGPURenderWindow::ReleaseGraphicsResources(vtkWindow* w)
 //------------------------------------------------------------------------------
 void vtkWebGPURenderWindow::SetWGPUConfiguration(vtkWebGPUConfiguration* config)
 {
+  if (this->WGPUConfiguration == config)
+  {
+    return;
+  }
   // Release all wgpu objects from the current device.
   const bool reInitialize = this->Initialized;
   if (this->Initialized)
@@ -2165,16 +2257,6 @@ void vtkWebGPURenderWindow::DestroyWindow()
 }
 
 //-------------------------------------------------------------------------------------------------
-void vtkWebGPURenderWindow::SetInteractor(vtkRenderWindowInteractor* rwi)
-{
-  this->Superclass::SetInteractor(rwi);
-  if (this->HardwareWindow)
-  {
-    this->HardwareWindow->SetInteractor(rwi);
-  }
-}
-
-//-------------------------------------------------------------------------------------------------
 bool vtkWebGPURenderWindow::EnsureDisplay()
 {
   if (!this->HardwareWindow)
@@ -2196,7 +2278,28 @@ void vtkWebGPURenderWindow::SyncWithHardware()
     return;
   }
   this->HardwareWindow->SetWindowName(this->GetWindowName());
-  this->HardwareWindow->SetSize(this->GetSize());
+  int* renderWindowSize = this->GetSize();
+  int* hardwareWindowSize = this->HardwareWindow->GetSize();
+  if (renderWindowSize[0] != hardwareWindowSize[0] || renderWindowSize[1] != hardwareWindowSize[1])
+  {
+    // Prioritize explicitly set render window size (> 0) over hardware window size
+    // This ensures SetSize() calls from user code are respected during initialization
+    if (renderWindowSize[0] > 0 && renderWindowSize[1] > 0)
+    {
+      // Render window size was explicitly set, use it
+      this->HardwareWindow->SetSize(renderWindowSize);
+    }
+    else if (this->HardwareWindow->GetMTime() > this->GetMTime())
+    {
+      // Hardware window was modified more recently, use its size
+      this->Superclass::SetSize(hardwareWindowSize[0], hardwareWindowSize[1]);
+    }
+    else
+    {
+      // Fall back to render window size (even if 0)
+      this->HardwareWindow->SetSize(renderWindowSize);
+    }
+  }
   this->HardwareWindow->SetCoverable(this->GetCoverable());
 }
 

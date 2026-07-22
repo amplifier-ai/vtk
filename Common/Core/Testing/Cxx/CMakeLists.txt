@@ -75,6 +75,12 @@ if (VTK_WRAP_SERIALIZATION)
   )
 endif ()
 
+set(win32_output_window_tests)
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  list(APPEND win32_output_window_tests
+    TestWin32OutputWindow.cxx)
+endif ()
+
 # Tell TestSystemInformation where to find the build trees.
 set(TestSystemInformation_ARGS ${CMAKE_BINARY_DIR})
 
@@ -125,7 +131,9 @@ vtk_add_test_cxx(vtkCommonCoreCxxTests tests
   TestDataArrayValueRange.cxx
   TestFMT.cxx
   TestGarbageCollector.cxx
+  TestGetConstObjectMacro.cxx
   TestGenericDataArrayAPI.cxx
+  TestGlobalStaticvtkObject.cxx
   TestInformationKeyLookup.cxx
   TestInherits.cxx
   TestLogger.cxx
@@ -133,6 +141,7 @@ vtk_add_test_cxx(vtkCommonCoreCxxTests tests
   TestLookupTable.cxx
   TestLookupTableThreaded.cxx
   TestMath.cxx
+  TestMathUtilities.cxx
   TestMersenneTwister.cxx
   TestMinimalStandardRandomSequence.cxx
   TestNew.cxx
@@ -148,7 +157,9 @@ vtk_add_test_cxx(vtkCommonCoreCxxTests tests
   TestPrintfToStdFormatConversion.cxx
   TestSCN.cxx
   TestSMP.cxx
+  TestSMPScan.cxx
   TestSmartPointer.cxx
+  TestSetBuffer.cxx
   TestSOADataArray.cxx
   TestSortDataArray.cxx
   TestSparseArrayValidation.cxx
@@ -162,6 +173,7 @@ vtk_add_test_cxx(vtkCommonCoreCxxTests tests
   TestVariantComparison.cxx
   TestVariantConversionFromString.cxx
   TestWeakPointer.cxx
+  TestWeakPtr.cxx
   TestXMLFileOutputWindow.cxx
   UnitTestInformationKeys.cxx
   otherArrays.cxx
@@ -174,6 +186,7 @@ vtk_add_test_cxx(vtkCommonCoreCxxTests tests
 
   ${data_array_tests}
   ${serdes_data_array_tests}
+  ${win32_output_window_tests}
 
   TestAffineArray.cxx
   TestCompositeArray.cxx

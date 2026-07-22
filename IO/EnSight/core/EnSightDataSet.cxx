@@ -70,7 +70,7 @@ const std::regex& GetIntRegEx()
 // floating point
 const std::regex& GetNumRegEx()
 {
-  static const std::regex numRegEx(R"((?:^|\s)([-]?\d*\.?\d*e?[+-]?\d*[^\s])(?=$|\s))");
+  static const std::regex numRegEx(R"((?:^|\s)([-]?\d*\.?\d*[eE]?[+-]?\d*[^\s])(?=$|\s))");
   return numRegEx;
 }
 
@@ -407,8 +407,10 @@ void readCaseFileValues(EnSightFile& file, std::string& line, std::vector<T>& va
     {
       line = result.second;
       if (!std::all_of(line.begin(), line.end(),
-            [](char c) -> bool
-            { return isdigit(c) || isspace(c) || c == '.' || c == 'e' || c == '+' || c == '-'; }))
+            [](char c) -> bool {
+              return isdigit(c) || isspace(c) || c == '.' || c == 'e' || c == 'E' || c == '+' ||
+                c == '-';
+            }))
       {
         // The current line is not more time step values, so reset
         // this line so we can continue processing.
@@ -1181,7 +1183,11 @@ bool EnSightDataSet::ReadGeometry(vtkPartitionedDataSetCollection* output,
 
       auto assembly = output->GetDataAssembly();
       auto validName = vtkDataAssembly::MakeValidNodeName(partName.c_str());
-      auto node = assembly->AddNode(validName.c_str());
+      auto node = assembly->GetChild(0, validName.c_str());
+      if (node == -1)
+      {
+        node = assembly->AddNode(validName.c_str());
+      }
       assembly->AddDataSetIndex(node, partInfo.PDCIndex);
     }
 
@@ -1213,7 +1219,11 @@ bool EnSightDataSet::ReadGeometry(vtkPartitionedDataSetCollection* output,
         auto name = this->LoadedPartNames->GetValue(i);
         output->GetMetaData(i)->Set(vtkCompositeDataSet::NAME(), name.c_str());
         auto validName = vtkDataAssembly::MakeValidNodeName(name.c_str());
-        auto node = assembly->AddNode(validName.c_str());
+        auto node = assembly->GetChild(0, validName.c_str());
+        if (node == -1)
+        {
+          node = assembly->AddNode(validName.c_str());
+        }
         assembly->AddDataSetIndex(node, i);
       }
     }
@@ -1250,7 +1260,11 @@ bool EnSightDataSet::ReadMeasuredGeometry(vtkPartitionedDataSetCollection* outpu
 
     auto assembly = output->GetDataAssembly();
     auto validName = vtkDataAssembly::MakeValidNodeName(this->MeasuredPartName.c_str());
-    auto node = assembly->AddNode(validName.c_str());
+    auto node = assembly->GetChild(0, validName.c_str());
+    if (node == -1)
+    {
+      node = assembly->AddNode(validName.c_str());
+    }
     assembly->AddDataSetIndex(node, this->MeasuredPartitionId);
     return true;
   }
@@ -1360,7 +1374,11 @@ bool EnSightDataSet::ReadMeasuredGeometry(vtkPartitionedDataSetCollection* outpu
 
   auto assembly = output->GetDataAssembly();
   auto validName = vtkDataAssembly::MakeValidNodeName(this->MeasuredPartName.c_str());
-  auto node = assembly->AddNode(validName.c_str());
+  auto node = assembly->GetChild(0, validName.c_str());
+  if (node == -1)
+  {
+    node = assembly->AddNode(validName.c_str());
+  }
   assembly->AddDataSetIndex(node, this->MeasuredPartitionId);
   return true;
 }

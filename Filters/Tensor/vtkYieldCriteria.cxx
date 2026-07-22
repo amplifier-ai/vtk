@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #include "vtkYieldCriteria.h"
 
+#include "vtkArrayDispatch.h"
 #include "vtkCellData.h"
 #include "vtkCommand.h"
 #include "vtkDataArray.h"
+#include "vtkDataArrayRange.h"
 #include "vtkDataArraySelection.h"
 #include "vtkDataSet.h"
 #include "vtkDataSetAttributes.h"
@@ -14,6 +16,7 @@
 #include "vtkMath.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
+#include "vtkSMPTools.h"
 #include "vtkTensorPrincipalInvariants.h"
 
 #include <cmath>
@@ -27,6 +30,69 @@ const std::map<vtkYieldCriteria::Criterion, std::string> Names = {
   { vtkYieldCriteria::Criterion::PrincipalStress, "Principal Stress" },
   { vtkYieldCriteria::Criterion::Tresca, "Tresca Criterion" },
   { vtkYieldCriteria::Criterion::VonMises, "Von Mises Criterion" }
+};
+
+/**
+ * Worker used to compute yield criteria in parallel with vtkArrayDispatch and vtkSMPTools.
+ */
+struct YieldWorker
+{
+  bool ComputeTresca = false;
+  bool ComputeVonMises = false;
+
+  template <typename Array1T>
+  void operator()(Array1T* a1, vtkDoubleArray* sigma1, vtkDoubleArray* sigma2,
+    vtkDoubleArray* sigma3, vtkDoubleArray* tresca, vtkDoubleArray* vonMises)
+  {
+    auto inTuples = vtk::DataArrayTupleRange(a1);
+
+    auto sigma1Range = vtk::DataArrayValueRange<1>(sigma1);
+    auto sigma2Range = vtk::DataArrayValueRange<1>(sigma2);
+    auto sigma3Range = vtk::DataArrayValueRange<1>(sigma3);
+
+    auto outTresca = vtk::DataArrayValueRange<1>(tresca);
+    auto outVonMises = vtk::DataArrayValueRange<1>(vonMises);
+
+    const vtkIdType numTuples = sigma1Range.size();
+
+    vtkSMPTools::For(0, numTuples,
+      [&](vtkIdType begin, vtkIdType end)
+      {
+        for (vtkIdType i = begin; i < end; ++i)
+        {
+          if (std::isnan(inTuples[i][0]))
+          {
+            if (ComputeTresca)
+            {
+              outTresca[i] = std::nan("");
+            }
+
+            if (ComputeVonMises)
+            {
+              outVonMises[i] = std::nan("");
+            }
+            continue;
+          }
+
+          const double value1 = sigma1Range[i];
+          const double value2 = sigma2Range[i];
+          const double value3 = sigma3Range[i];
+
+          if (ComputeTresca)
+          {
+            outTresca[i] = std::abs(value3 - value1);
+          }
+
+          if (ComputeVonMises)
+          {
+            outVonMises[i] =
+              std::sqrt((value1 - value2) * (value1 - value2) +
+                (value2 - value3) * (value2 - value3) + (value1 - value3) * (value1 - value3)) /
+              std::sqrt(2.0);
+          }
+        }
+      });
+  }
 };
 }
 
@@ -199,11 +265,11 @@ bool vtkYieldCriteria::ComputeYieldCriteria(vtkDataSet* output, vtkDataArray* ar
     ? vtkDataSetAttributes::SafeDownCast(output->GetPointData())
     : vtkDataSetAttributes::SafeDownCast(output->GetCellData());
 
-  vtkDoubleArray* sigma1 = vtkDoubleArray::SafeDownCast(attributes->GetArray(
+  vtkDoubleArray* sigma1 = vtkArrayDownCast<vtkDoubleArray>(attributes->GetArray(
     vtkTensorPrincipalInvariants::GetSigmaValueArrayName(arrayName, 1).c_str()));
-  vtkDoubleArray* sigma2 = vtkDoubleArray::SafeDownCast(attributes->GetArray(
+  vtkDoubleArray* sigma2 = vtkArrayDownCast<vtkDoubleArray>(attributes->GetArray(
     vtkTensorPrincipalInvariants::GetSigmaValueArrayName(arrayName, 2).c_str()));
-  vtkDoubleArray* sigma3 = vtkDoubleArray::SafeDownCast(attributes->GetArray(
+  vtkDoubleArray* sigma3 = vtkArrayDownCast<vtkDoubleArray>(attributes->GetArray(
     vtkTensorPrincipalInvariants::GetSigmaValueArrayName(arrayName, 3).c_str()));
 
   if (!sigma1 || !sigma2 || !sigma3)
@@ -224,50 +290,20 @@ bool vtkYieldCriteria::ComputeYieldCriteria(vtkDataSet* output, vtkDataArray* ar
   {
     tresca->SetNumberOfTuples(nbTuples);
   }
-
   if (computeVonMises)
   {
     vonMises->SetNumberOfTuples(nbTuples);
   }
 
-  for (vtkIdType idx = 0; idx < nbTuples; idx++)
+  YieldWorker worker;
+  worker.ComputeTresca = computeTresca;
+  worker.ComputeVonMises = computeVonMises;
+
+  using MyDispatch = vtkArrayDispatch::DispatchByValueType<vtkArrayDispatch::Reals>;
+  if (!MyDispatch::Execute(
+        array, worker, sigma1, sigma2, sigma3, tresca.GetPointer(), vonMises.GetPointer()))
   {
-    // Check for NaN values
-    if (std::isnan(array->GetComponent(idx, 0)))
-    {
-      if (computeTresca)
-      {
-        tresca->SetValue(idx, std::nan(""));
-      }
-
-      if (computeVonMises)
-      {
-        vonMises->SetValue(idx, std::nan(""));
-      }
-
-      continue;
-    }
-
-    // Fill criteria data arrays
-    // Tresca criterion : |sigma3 - sigma1|
-    // Von Mises criterion:
-    // sqrt( (sigma1 - sigma2)^2 + (sigma2 - sigma3)^2 + (sigma1 - sigma3)^2 ) / sqrt(2)
-    double s1 = sigma1->GetValue(idx);
-    double s2 = sigma2->GetValue(idx);
-    double s3 = sigma3->GetValue(idx);
-
-    if (computeTresca)
-    {
-      tresca->SetValue(idx, std::abs(s3 - s1));
-    }
-
-    if (computeVonMises)
-    {
-      double vonMisesValue =
-        std::sqrt((s1 - s2) * (s1 - s2) + (s2 - s3) * (s2 - s3) + (s1 - s3) * (s1 - s3)) /
-        std::sqrt(2.0);
-      vonMises->SetValue(idx, vonMisesValue);
-    }
+    worker(array, sigma1, sigma2, sigma3, tresca.GetPointer(), vonMises.GetPointer());
   }
 
   // Add arrays to output

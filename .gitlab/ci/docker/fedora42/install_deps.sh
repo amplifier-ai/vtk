@@ -37,8 +37,8 @@ dnf install -y --setopt=install_weak_deps=False \
     boost-devel postgresql-server-devel postgresql-private-devel \
     mariadb-devel libiodbc-devel PDAL-devel liblas-devel openslide-devel \
     libarchive-devel freeglut-devel sqlite-devel PEGTL-devel cgnslib-devel \
-    proj-devel wkhtmltopdf cli11-devel fmt-devel openvdb-devel json-devel \
-    openxr openxr-devel libscn-devel
+    proj-devel wkhtmltopdf cli11-devel fmt-devel tbb-devel json-devel \
+    openxr openxr-devel libscn-devel blosc-devel
 
 # Python dependencies
 dnf install -y --setopt=install_weak_deps=False \
@@ -75,10 +75,15 @@ dnf install -y --setopt=install_weak_deps=False \
 
 if [ "$( uname -m )" = "x86_64" ]; then
     # Openturns dependencies
+    # FIXME: using Fedora 43 repo as a hotfix since the Fedora 42 repo is not available anymore
     dnf config-manager addrepo \
-        --from-repofile=https://download.opensuse.org/repositories/science:/openturns/Fedora_42/science:openturns.repo
+        --from-repofile=https://download.opensuse.org/repositories/science:/openturns/Fedora_43/science:openturns.repo
     dnf install -y --setopt=install_weak_deps=False \
         openturns-libs openturns-devel
+
+    # libjpeg-turbo SIMD dependencies
+    dnf install -y --setopt=install_weak_deps=False \
+        nasm
 fi
 
 # Emscripten SDK dependencies

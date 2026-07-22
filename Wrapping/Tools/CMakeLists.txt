@@ -171,6 +171,7 @@ if (NOT TARGET WrapSerDes)
     DEVELOPMENT
     BASENAME vtkWrapSerDes
     vtkWrapSerDes.c
+    vtkWrapJsonClass.c
     vtkWrapSerDesClass.c
     vtkWrapSerDesFunction.c
     vtkWrapSerDesProperty.c)

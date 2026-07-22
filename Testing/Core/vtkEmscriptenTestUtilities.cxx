@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 #ifdef __EMSCRIPTEN__
 
+// Hide VTK_DEPRECATED_IN_9_7_0() warnings for this class.
+// #define VTK_DEPRECATION_LEVEL 0
 #include "vtkEmscriptenTestUtilities.h"
 
 #include <cstdlib>                // for free

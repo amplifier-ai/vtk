@@ -37,6 +37,11 @@ Less common, but variables which may be of interest to some:
     The version of Java in which VTK's Java wrapping will be built for.
   * `VTK_WRAP_SERIALIZATION` (default `OFF`; requires `VTK_ENABLE_WRAPPING`):
     Whether serialization code will be auto generated or not.
+  * `VTK_BUILD_TYPES_JSON` (default `OFF`; requires `VTK_WRAP_SERIALIZATION`):
+    Whether to emit a per-class JSON type manifest (`<Class>.json`) describing
+    the serialized properties and methods, for language-agnostic API bindings.
+    Installed to `share/vtk*/types`. Off by default; default builds emit no
+    manifests and incur no extra parse. See [](/advanced/json_type_manifests.md).
   * `VTK_BUILD_MAVEN_PKG` (default `OFF`; requires `VTK_WRAP_JAVA`):
     Whether to build the Java Maven package for VTK.
   * `VTK_SMP_IMPLEMENTATION_TYPE` (default `Sequential`): Set which SMPTools
@@ -57,6 +62,16 @@ Less common, but variables which may be of interest to some:
   * `VTK_WEBASSEMBLY_SMP_THREAD_POOL_SIZE` (default `0`, means runtime hardware concurrency): This option can
     be used for limiting the number of webassembly threads consumed by
     SMP tools. By setting this you can reserve threads for your application to use.
+  * `VTK_WEBASSEMBLY_LEGACY_EXCEPTIONS` (default `ON`):
+    This option is applicable only when building with Emscripten toolchain.
+    When `ON`, VTK is compiled with the legacy Wasm EH proposal, matching
+    emscripten's historical default (`-sWASM_LEGACY_EXCEPTIONS=1`). Set to
+    `OFF` when the rest of the link — the consumer application and any other
+    libraries — is built with `-sWASM_LEGACY_EXCEPTIONS=0`; the resulting
+    binary then uses the standardized exception handling proposal end-to-end.
+    Mixing both proposals causes the browser to reject the module at
+    instantiate with "module uses a mix of legacy and new exception handling
+    instructions".
   * `VTK_TESTING_WASM_ENGINE` (default ``):
     Path to a wasm runtime executable. This is used to run C++ tests in wasm environments.
   * `VTK_WRAP_JAVASCRIPT` (default `OFF`; requires `VTK_ENABLE_WRAPPING`):
@@ -72,6 +87,11 @@ Less common, but variables which may be of interest to some:
     `SMALLEST_WITH_CLOSURE`.
   * `VTK_WEBASSEMBLY_JOB_POOL_LINK_SIZE` (default number of processors):
     Size of the job pool for linking wasm targets. Adjust as needed to avoid OOM errors.
+  * `VTK_JPEG_ENABLE_SIMD` (default `OFF`):
+    Whether the libjpeg-turbo library should be compiled with SIMD extensions or not.
+    On x86(-64) targets, [NASM][nasm] must be installed
+    (or set its path by setting the `CMAKE_ASM_NASM_COMPILER` variable).
+    This is not compatible with WASM builds.
 
 ## OpenGL related build options:
 
@@ -350,3 +370,4 @@ If any `YES` module requires a `NO` module, an error is raised.
 [hip]: https://en.wikipedia.org/wiki/ROCm
 [mpi]: https://www.mcs.anl.gov/research/projects/mpi
 [nsight]: https://developer.nvidia.com/nsight-systems
+[nasm]: https://www.nasm.us/

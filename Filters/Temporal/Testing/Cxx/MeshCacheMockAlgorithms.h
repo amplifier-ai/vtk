@@ -15,7 +15,6 @@
 VTK_ABI_NAMESPACE_BEGIN
 
 class vtkCompositeDataSet;
-class vtkDataObjectMeshCache;
 class vtkPartitionedDataSetCollection;
 
 //------------------------------------------------------------------------------

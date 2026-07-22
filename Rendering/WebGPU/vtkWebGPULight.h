@@ -41,8 +41,9 @@ protected:
 
   struct LightInfo
   {
-    vtkTypeUInt8 Pad[12] = {}; // so that Type begins at n modulo 16 byte. LightCount,
-                               // a 4-byte integer is the first element in lights ssbo.
+    // Must be 80 bytes to match WGSL SceneLight struct stride.
+    // The 12-byte padding needed to align the first element after the 4-byte count
+    // is written once in WriteLightsBuffer(), not per-light.
     // 0 : deferred, 1 : headlight, 2 : lightkit, 3 : positional
     vtkTypeUInt32 Type = 0;
     // 0 : not positional, 1 : positional

@@ -118,8 +118,6 @@ void vtkWebGPUActor::Render(vtkRenderer* renderer, vtkMapper* mapper)
         {
           this->CreateBindGroups(wgpuConfiguration);
         }
-        // reset this flag because the `mapper->Render()` call shall invalidate the bundle if it
-        // determines that the render bundle needs to be recorded once again.
         mapper->Render(renderer, this);
         bool updateBuffers = this->CacheActorRenderOptions();
         updateBuffers |= this->CacheActorShadeOptions();
@@ -339,6 +337,36 @@ bool vtkWebGPUActor::CacheActorRenderOptions()
       (displayProperty->GetRenderLinesAsTubes() << 6) |
       (static_cast<int>(displayProperty->GetPoint2DShape()) << 7);
     ro.Flags2 = displayProperty->GetLighting();
+    // Coincident topology parameters. Reset to zero first in case topology resolution is off.
+    ro.CoinPolygonFactor = 0;
+    ro.CoinPolygonOffset = 0;
+    ro.CoinLineFactor = 0;
+    ro.CoinLineOffset = 0;
+    ro.CoinPointOffset = 0;
+    const int resolveMode = vtkMapper::GetResolveCoincidentTopology();
+    if (auto* vtkmap = vtkMapper::SafeDownCast(this->GetMapper()))
+    {
+      if (resolveMode == VTK_RESOLVE_POLYGON_OFFSET)
+      {
+        double pgFactor = 0.0, pgUnits = 0.0;
+        double lnFactor = 0.0, lnUnits = 0.0;
+        double ptUnits = 0.0;
+        vtkmap->GetCoincidentTopologyPolygonOffsetParameters(pgFactor, pgUnits);
+        vtkmap->GetCoincidentTopologyLineOffsetParameters(lnFactor, lnUnits);
+        vtkmap->GetCoincidentTopologyPointOffsetParameter(ptUnits);
+        ro.CoinPolygonFactor = static_cast<vtkTypeFloat32>(pgFactor);
+        ro.CoinPolygonOffset = static_cast<vtkTypeFloat32>(pgUnits);
+        ro.CoinLineFactor = static_cast<vtkTypeFloat32>(lnFactor);
+        ro.CoinLineOffset = static_cast<vtkTypeFloat32>(lnUnits);
+        ro.CoinPointOffset = static_cast<vtkTypeFloat32>(ptUnits);
+      }
+      else if (resolveMode == VTK_RESOLVE_SHIFT_ZBUFFER)
+      {
+        // For shift-zbuffer mode, apply z-shift only to polygon (surface) pipeline.
+        const double zShift = vtkMapper::GetResolveCoincidentTopologyZShift();
+        ro.CoinPolygonOffset = static_cast<vtkTypeFloat32>(zShift * 4.0);
+      }
+    }
     internals.RenderOptionsLastUpdated.Modified();
     return true;
   }

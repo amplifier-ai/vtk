@@ -36,7 +36,7 @@ vtk_object_factory_configure(
   HEADER_FILE vtk_object_factory_header
   EXPORT_MACRO "VTKRENDERINGRAYTRACING_EXPORT")
 
-option(VTK_ENABLE_OSPRAY "Enable OSPRay RayTracing backend" ON)
+option(VTK_ENABLE_OSPRAY "Enable OSPRay RayTracing backend" OFF)
 cmake_dependent_option(VTKOSPRAY_ENABLE_DENOISER
   "build OSPRay Renderer using OpenImageDenoise" OFF
   "VTK_ENABLE_OSPRAY" OFF)
@@ -99,8 +99,8 @@ if (VTK_ENABLE_VISRTX)
   if (DEFINED VisRTX_VERSION AND
       VisRTX_VERSION VERSION_GREATER_EQUAL "0.2.0")
     message(FATAL_ERROR
-      "VisRTX 0.2.0 and above are intended to be used via the ANARI interface. "
-      "See https://gitlab.kitware.com/vtk/vtk/-/merge_requests/10324 for progress.")
+      "VisRTX 0.2.0 and above are intended to be used via the ANARI interface.
+      To use ANARI, please activate VTK_MODULE_ENABLE_VTK_RenderingAnari instead.")
   endif ()
   vtk_module_link(VTK::RenderingRayTracing
     PUBLIC

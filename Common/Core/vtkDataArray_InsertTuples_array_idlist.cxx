@@ -84,16 +84,21 @@ void vtkDataArray::InsertTuples(vtkIdList* dstIds, vtkIdList* srcIds, vtkAbstrac
   }
 
   vtkIdType newSize = (maxDstTupleId + 1) * this->NumberOfComponents;
-  if (this->Size < newSize)
+  if (this->Capacity < newSize)
   {
-    if (!this->Resize(maxDstTupleId + 1))
+    if (!this->ReserveTuples(maxDstTupleId + 1))
     {
-      vtkErrorMacro("Resize failed.");
+      vtkErrorMacro("ReserveTuples failed.");
       return;
     }
   }
 
-  this->MaxId = std::max(this->MaxId, newSize - 1);
+  // Update the MaxId only if actually larger.
+  // NB: for thread safety, don't use std::max here because it would write unconditionally.
+  if (newSize - 1 > this->MaxId) // NOLINT(readability-use-std-min-max)
+  {
+    this->MaxId = newSize - 1;
+  }
 
   SetTuplesIdListWorker worker(srcIds, dstIds);
   if (!vtkArrayDispatch::Dispatch2::Execute(srcDA, this, worker))

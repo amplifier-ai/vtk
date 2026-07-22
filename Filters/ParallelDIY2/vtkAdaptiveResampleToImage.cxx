@@ -81,7 +81,7 @@ vtkSmartPointer<vtkIdList> get_ids(vtkDataSetAttributes* source, unsigned char g
   }
 
   vtkNew<vtkIdList> ids;
-  ids->Allocate(mask->GetNumberOfTuples());
+  ids->Reserve(mask->GetNumberOfTuples());
   for (vtkIdType cc = 0; cc < mask->GetNumberOfTuples(); ++cc)
   {
     if ((mask->GetTypedComponent(cc, 0) & ghostFlag) != ghostFlag)
@@ -134,16 +134,14 @@ bool merge(vtkImageData* target, std::vector<vtkSmartPointer<vtkImageData>>& sou
     auto inPD = sources[idx]->GetPointData();
     if (auto ptids = get_ids(inPD, vtkDataSetAttributes::HIDDENPOINT))
     {
-      ptList.TransformData(idx, inPD, opd,
-        [&ptids](vtkAbstractArray* in, vtkAbstractArray* out)
+      ptList.TransformData(idx, inPD, opd, [&ptids](vtkAbstractArray* in, vtkAbstractArray* out)
         { out->InsertTuples(ptids, ptids, in); });
     }
 
     auto inCD = sources[idx]->GetCellData();
     if (auto cellids = get_ids(inCD, vtkDataSetAttributes::HIDDENCELL))
     {
-      cellList.TransformData(idx, inCD, ocd,
-        [&cellids](vtkAbstractArray* in, vtkAbstractArray* out)
+      cellList.TransformData(idx, inCD, ocd, [&cellids](vtkAbstractArray* in, vtkAbstractArray* out)
         { out->InsertTuples(cellids, cellids, in); });
     }
   }
