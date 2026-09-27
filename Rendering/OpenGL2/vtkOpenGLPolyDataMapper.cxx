@@ -4092,6 +4092,10 @@ void vtkOpenGLPolyDataMapper::BuildBufferObjects(vtkRenderer* ren, vtkActor* act
 //-------------------------------------------------------------------------
 void vtkOpenGLPolyDataMapper::BuildIBO(vtkRenderer* ren, vtkActor* act, vtkPolyData* poly)
 {
+  // Index buffers depend on the input geometry and primitive presentation below,
+  // not the mapper MTime left in TempState by BuildBufferObjects (e.g. clipping).
+  this->TempState.Clear();
+  this->TempState.Append(poly->GetMTime(), "polydata mtime");
   vtkCellArray* prims[4];
   prims[0] = poly->GetVerts();
   prims[1] = poly->GetLines();
