@@ -4,7 +4,12 @@ to VTK datasets. See examples at bottom.
 
 import sys
 from contextlib import suppress
-from vtkmodules.vtkCommonCore import vtkPoints, vtkAbstractArray, vtkDataArray
+from vtkmodules.vtkCommonCore import (
+    vtkPoints,
+    vtkAbstractArray,
+    vtkDataArray,
+    vtkWeakReference,
+)
 from vtkmodules.vtkCommonDataModel import (
     vtkCellArray,
     vtkDataObject,
@@ -31,13 +36,61 @@ NUMPY_AVAILABLE = False
 with suppress(ImportError):
     import numpy
     from vtkmodules.util import numpy_support
-    from vtkmodules.numpy_interface.utils import NoneArray
-    from vtkmodules.numpy_interface.vtk_partitioned_array import (
-        VTKPartitionedArray,
-        VTKPartitionedPoints,
-    )
 
     NUMPY_AVAILABLE = True
+
+
+class _NumpyInterface:
+    """Lazily resolved handles into ``vtkmodules.numpy_interface``.
+
+    These cannot be imported at module scope.  This module is imported by
+    vtkmodules' override hook while ``vtkCommonDataModel`` is still
+    initializing, and ``vtkmodules.numpy_interface.utils`` imports
+    ``vtkCommonDataModel`` itself.  So whenever something under
+    ``numpy_interface`` is the first thing to pull in
+    ``vtkCommonDataModel`` -- ``import vtkmodules.util.functions`` is the
+    common way -- that module is only half initialized by the time we get
+    here, and importing from it raises ImportError.
+
+    That ImportError used to be swallowed along with the optional numpy
+    dependency, silently leaving ``NUMPY_AVAILABLE`` False for the rest of
+    the process.  Array assignments then became no-ops and lookups returned
+    None, with no diagnostic.  Resolving on first use instead means the
+    import cycle has unwound by the time these names are needed.
+    """
+
+    __slots__ = ()
+
+    _resolved = False
+    NoneArray = None
+    VTKPartitionedArray = None
+    VTKPartitionedPoints = None
+
+    @classmethod
+    def get(cls):
+        if not cls._resolved:
+            from vtkmodules.numpy_interface.utils import NoneArray
+            from vtkmodules.numpy_interface.vtk_partitioned_array import (
+                VTKPartitionedArray,
+                VTKPartitionedPoints,
+            )
+
+            cls.NoneArray = NoneArray
+            cls.VTKPartitionedArray = VTKPartitionedArray
+            cls.VTKPartitionedPoints = VTKPartitionedPoints
+            cls._resolved = True
+        return cls
+
+
+def __getattr__(name):
+    """Keep ``data_model.NoneArray`` and friends working for outside callers."""
+    if name in ("NoneArray", "VTKPartitionedArray", "VTKPartitionedPoints"):
+        if not NUMPY_AVAILABLE:
+            raise AttributeError(
+                "%s requires numpy, which is not available" % name
+            )
+        return getattr(_NumpyInterface.get(), name)
+    raise AttributeError("module %s has no attribute %r" % (__name__, name))
 
 
 class FieldDataBase(object):
@@ -51,6 +104,10 @@ class FieldDataBase(object):
     This class is the base for ``FieldData``, ``DataSetAttributes``,
     ``PointData``, and ``CellData`` overrides.
     """
+
+    # Class-level default so the property works even if __init__ is skipped.
+    _dataset = None
+
     def __init__(self, *args):
         # SWIG pointer reconstruction: tp_new already returned the
         # existing object; skip init to avoid clobbering state.
@@ -58,6 +115,41 @@ class FieldDataBase(object):
             return
         self.association = None
         self.dataset = None
+
+    def _set_dataset(self, dataset):
+        """Store a *weak* reference to the owning dataset.
+
+        This is a child-to-parent back reference, so it must not keep the
+        dataset alive.  A strong reference here leaks the whole dataset: when
+        the Python wrapper for this field data is released while the C++
+        object is still alive (the common case -- ``ds.cell_data`` returns a
+        temporary), ``vtkPythonUtil::RemoveObjectFromMap`` stashes ``__dict__``
+        in the ghost map, which then pins everything it references until the
+        C++ object dies.  Since the dataset owns this field data, that never
+        happens, and the cycle is invisible to Python's garbage collector.
+        ``VTKDataArrayMixin._set_dataset`` uses the same weak reference.
+        """
+        if dataset is None:
+            self._dataset = None
+            return
+        # Reuse the existing holder: point_data/cell_data are hot paths and
+        # each access re-sets the owner.
+        ref = self._dataset
+        if ref is None:
+            ref = vtkWeakReference()
+            self._dataset = ref
+        ref.Set(dataset)
+
+    @property
+    def dataset(self):
+        """The dataset owning this field data, or None."""
+        if self._dataset is not None:
+            return self._dataset.Get()
+        return None
+
+    @dataset.setter
+    def dataset(self, value):
+        self._set_dataset(value)
 
     def __getitem__(self, idx):
         """Implements the [] operator. Accepts an array name or index."""
@@ -80,7 +172,7 @@ class FieldDataBase(object):
             vtkarray = self.GetAbstractArray(idx)
             if vtkarray:
                 return vtkarray
-            return NoneArray
+            return _NumpyInterface.get().NoneArray
         # All standard VTK data arrays have mixin overrides applied
         # (VTKAOSArray, VTKSOAArray, VTKConstantArray) so they
         # are already numpy-compatible.  Just set metadata and return.
@@ -133,7 +225,7 @@ class FieldDataBase(object):
                 self.AddArray(narray)
             return
 
-        if narray is NoneArray:
+        if narray is _NumpyInterface.get().NoneArray:
             # if NoneArray, nothing to do.
             return
 
@@ -155,15 +247,30 @@ class FieldDataBase(object):
             self.AddArray(arr)
             return
 
+        dataset = self.dataset
+        if dataset is None and self.association in (
+            vtkDataObject.POINT,
+            vtkDataObject.CELL,
+            vtkDataObject.ROW,
+        ):
+            raise RuntimeError(
+                "Cannot size the array %r: the owning dataset is no longer "
+                "alive.  Field data keeps only a weak reference to its "
+                "dataset, so chaining off an unowned temporary -- e.g. "
+                "make_mesh().point_data['x'] = 1.0 -- destroys the dataset "
+                "before the assignment runs.  Bind the dataset to a name "
+                "first." % name
+            )
+
         if self.association == vtkDataObject.POINT:
-            arrLength = self.dataset.GetNumberOfPoints()
+            arrLength = dataset.GetNumberOfPoints()
         elif self.association == vtkDataObject.CELL:
-            arrLength = self.dataset.GetNumberOfCells()
+            arrLength = dataset.GetNumberOfCells()
         elif (
             self.association == vtkDataObject.ROW
-            and self.dataset.GetNumberOfColumns() > 0
+            and dataset.GetNumberOfColumns() > 0
         ):
-            arrLength = self.dataset.GetNumberOfRows()
+            arrLength = dataset.GetNumberOfRows()
         else:
             if not isinstance(narray, numpy.ndarray):
                 arrLength = 1
@@ -463,12 +570,13 @@ class CompositeDataSetAttributes(object):
             # don't know how to handle composite dataset attribute when numpy not around
             raise NotImplementedError("Only available with numpy")
 
-        if narray is NoneArray:
+        npi = _NumpyInterface.get()
+        if narray is npi.NoneArray:
             # if NoneArray, nothing to do.
             return
 
         added = False
-        if not isinstance(narray, VTKPartitionedArray):  # Scalar input
+        if not isinstance(narray, npi.VTKPartitionedArray):  # Scalar input
             for ds in self.dataset:
                 ds.GetAttributesAsFieldData(self.association).set_array(name, narray)
                 added = True
@@ -493,10 +601,11 @@ class CompositeDataSetAttributes(object):
             # don't know how to handle composite dataset attribute when numpy not around
             raise NotImplementedError("Only available with numpy")
 
+        npi = _NumpyInterface.get()
         if arrayname not in self.array_names:
-            return NoneArray
+            return npi.NoneArray
         if arrayname not in self.arrays or self.arrays[arrayname]() is None:
-            array = VTKPartitionedArray(
+            array = npi.VTKPartitionedArray(
                 dataset=self.dataset, name=arrayname, association=self.association
             )
             self.arrays[arrayname] = weakref.ref(array)
@@ -913,10 +1022,11 @@ class CompositeDataSetBase(object):
                 except AttributeError:
                     _pts = None
                 pts.append(_pts)
+            npi = _NumpyInterface.get()
             if len(pts) == 0 or all(p is None for p in pts):
-                cpts = NoneArray
+                cpts = npi.NoneArray
             else:
-                cpts = VTKPartitionedPoints(pts)
+                cpts = npi.VTKPartitionedPoints(pts)
             self._Points = weakref.ref(cpts)
         return self._Points()
 

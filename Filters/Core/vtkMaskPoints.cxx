@@ -734,7 +734,7 @@ int vtkMaskPoints::RequestData(vtkInformation* vtkNotUsed(request),
               {
                 input->GetPoint(randPtId, x);
                 id = newPts->InsertNextPoint(x);
-                outputPD->CopyData(pd, ptId, id);
+                outputPD->CopyData(pd, randPtId, id);
                 maskedPoints[randPtId] = true;
                 break;
               }
@@ -743,7 +743,8 @@ int vtkMaskPoints::RequestData(vtkInformation* vtkNotUsed(request),
         }
         else
         {
-          vtkWarningMacro("Region has no 2D cells.");
+          // Surface sampling only uses 2D cells, volume sampling only uses 3D cells
+          vtkWarningMacro("Region has no " << dim << "D cells.");
         }
         break;
       }

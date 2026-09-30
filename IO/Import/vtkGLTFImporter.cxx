@@ -654,34 +654,19 @@ void vtkGLTFImporter::ImportActors(vtkRenderer* renderer)
   this->ArmatureActors.clear();
   this->ActorCollection->RemoveAllItems();
 
-  // Tracks how many times each (parent, name) pair has been used so that
-  // duplicate sibling names — which glTF permits — are made unique before
-  // being passed to vtkDataAssembly::AddNode (which requires uniqueness).
-  std::map<int, std::set<std::string>> usedNames;
-  std::map<std::pair<int, std::string>, int> nameCounters;
-  auto makeUniqueName = [&usedNames, &nameCounters](
-                          int parent, const std::string& baseName) -> std::string
-  {
-    auto& usedSet = usedNames[parent];
-    if (usedSet.insert(baseName).second)
-    {
-      return baseName;
-    }
-    auto& counter = nameCounters[{ parent, baseName }];
-    std::string candidate;
-    do
-    {
-      candidate = baseName + "_" + vtk::to_string(++counter);
-    } while (!usedSet.insert(candidate).second);
-    return candidate;
-  };
-
   // Iterate over tree
   while (!nodeIdStack.empty())
   {
     // Get current node
     const int nodeId = nodeIdStack.top();
     nodeIdStack.pop();
+    if (nodeId < 0 || nodeId >= static_cast<int>(model->Nodes.size()))
+    {
+      vtkErrorMacro("Invalid node index: " << nodeId << " , aborting.");
+      this->SetUpdateStatus(vtkImporter::UpdateStatusEnum::FAILURE);
+      return;
+    }
+
     const auto& node = model->Nodes[nodeId];
 
     // Add this node into the scene hierarchy
@@ -690,12 +675,11 @@ void vtkGLTFImporter::ImportActors(vtkRenderer* renderer)
     std::string dasmNodeName;
     if (!node.Name.empty())
     {
-      dasmNodeName =
-        makeUniqueName(dasmParent, vtkDataAssembly::MakeValidNodeName(node.Name.c_str()));
+      dasmNodeName = vtkDataAssembly::MakeValidNodeName(node.Name.c_str());
     }
     else
     {
-      dasmNodeName = makeUniqueName(dasmParent, "node_" + vtk::to_string(nodeId));
+      dasmNodeName = "node_" + vtk::to_string(nodeId);
     }
     const int dasmNode = this->SceneHierarchy->AddNode(dasmNodeName.c_str(), dasmParent);
 
@@ -707,6 +691,13 @@ void vtkGLTFImporter::ImportActors(vtkRenderer* renderer)
     // Import node's geometry
     if (node.Mesh >= 0)
     {
+      if (node.Mesh >= static_cast<int>(model->Meshes.size()))
+      {
+        vtkErrorMacro("Invalid node mesh index: " << node.Mesh << " , aborting.");
+        this->SetUpdateStatus(vtkImporter::UpdateStatusEnum::FAILURE);
+        return;
+      }
+
       auto mesh = model->Meshes[node.Mesh];
       int primitiveId = 0;
       for (auto primitive : mesh.Primitives)
@@ -754,12 +745,11 @@ void vtkGLTFImporter::ImportActors(vtkRenderer* renderer)
             primitiveName += "_primitive_" + vtk::to_string(primitiveId++);
           }
           this->OutputsDescription += primitiveName;
-          meshNodeName =
-            makeUniqueName(dasmNode, vtkDataAssembly::MakeValidNodeName(primitiveName.c_str()));
+          meshNodeName = vtkDataAssembly::MakeValidNodeName(primitiveName.c_str());
         }
         else
         {
-          meshNodeName = makeUniqueName(dasmNode, "primitive_" + vtk::to_string(primitiveId++));
+          meshNodeName = "primitive_" + vtk::to_string(primitiveId++);
         }
         this->OutputsDescription += "Primitive Geometry:\n";
         this->OutputsDescription +=
@@ -933,6 +923,14 @@ void vtkGLTFImporter::ImportCameras(vtkRenderer* renderer)
     // Get current node
     int nodeId = nodeIdStack.top();
     nodeIdStack.pop();
+
+    if (nodeId < 0 || nodeId >= static_cast<int>(model->Nodes.size()))
+    {
+      vtkErrorMacro("Invalid nodeId: " << nodeId << ", aborting.");
+      this->SetUpdateStatus(vtkImporter::UpdateStatusEnum::FAILURE);
+      return;
+    }
+
     const vtkGLTFDocumentLoader::Node& node = model->Nodes[nodeId];
 
     // Import node's camera
