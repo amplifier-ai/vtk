@@ -4174,6 +4174,8 @@ void vtkOpenGLPolyDataMapper::BuildIBO(vtkRenderer* ren, vtkActor* act, vtkPolyD
   // IBO to rebuild on every update even though the cell arrays themselves
   // are unchanged.
   this->TempState.Clear();
+  // Polygon triangulation depends on point positions even when connectivity is unchanged.
+  this->TempState.Append(poly->GetPoints() ? poly->GetPoints()->GetMTime() : 0, "points mtime");
   // So...polydata can return a dummy CellArray when there are no lines
   this->TempState.Append(prims[0]->GetNumberOfCells() ? prims[0]->GetMTime() : 0, "prim0 mtime");
   this->TempState.Append(prims[1]->GetNumberOfCells() ? prims[1]->GetMTime() : 0, "prim1 mtime");
