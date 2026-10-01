@@ -11,6 +11,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   set(_vtk_test_cxx_wasm_enabled_in_browser ON)
 endif ()
 vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
+  TestArrayTextureBufferCacheGrowth.cxx,NO_DATA,NO_VALID,NO_SERDES
+  TestArrayTextureBufferCachePurge.cxx,NO_DATA,NO_VALID,NO_SERDES
   TestArrayTextureBufferCacheSharing.cxx,NO_DATA,NO_VALID,NO_SERDES
   TestArrayTextureBufferPartialUpload.cxx,NO_DATA,NO_VALID,NO_SERDES
   TestBatchOrderRendering.cxx
@@ -49,6 +51,8 @@ vtk_add_test_cxx(vtkRenderingOpenGL2CxxTests tests
   TestGlyph3DMapperTreeIndexingCompositeGlyphs.cxx,NO_DATA
   TestHiddenLineRemovalPass.cxx
   TestIndexBufferObjectTriangulation.cxx,NO_DATA,NO_VALID,NO_OUTPUT
+  TestMovingPolygonIndexBufferCache.cxx,NO_DATA,NO_VALID,NO_OUTPUT
+  TestPolyDataMapperIndexBufferCache.cxx,NO_DATA,NO_VALID,NO_OUTPUT
   TestLightingMapLuminancePass.cxx
   TestLightingMapNormalsPass.cxx
   TestMultiTexturing.cxx,NO_SERDES
