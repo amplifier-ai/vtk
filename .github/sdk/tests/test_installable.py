@@ -36,8 +36,10 @@ class InstallableTargets(unittest.TestCase):
             {"name": "vtkProbeOpenGLVersion", "type": "EXECUTABLE", "install": {"destinations": [{}]}},
             {"name": "TestRendering", "type": "EXECUTABLE"},
             {"name": "VTKCSharpTests", "type": "UTILITY"},
+            {"name": "generate_proj_db", "type": "UTILITY"},
         ])
-        self.assertEqual(self.module.installed_targets(self.build), ["vtkCommonCore", "vtkProbeOpenGLVersion"])
+        self.assertEqual(self.module.installed_targets(self.build),
+                         ["generate_proj_db", "vtkCommonCore", "vtkProbeOpenGLVersion"])
 
     def test_missing_cmake_reply_is_an_error(self):
         (self.reply / "index-2026-10-05.json").unlink()

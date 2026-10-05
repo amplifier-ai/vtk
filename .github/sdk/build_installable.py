@@ -26,6 +26,10 @@ def installed_targets(build):
     selected = []
     for reference in configuration["targets"]:
         target = json.loads((reply / reference["jsonFile"]).read_text())
+        # PROJ installs this generated database through a file rule; the utility
+        # target has no target-install metadata (ThirdParty/libproj/.../data).
+        if target["name"] == "generate_proj_db":
+            selected.append(target["name"])
         if target["type"] in ("SHARED_LIBRARY", "STATIC_LIBRARY", "MODULE_LIBRARY", "EXECUTABLE"):
             if target.get("install", {}).get("destinations"):
                 selected.append(target["name"])
