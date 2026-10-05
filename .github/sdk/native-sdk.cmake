@@ -1,0 +1,11 @@
+# Shared ABI and installation options for one native VTK/C# build.
+set(CMAKE_BUILD_TYPE Release CACHE STRING "Native SDK configuration")
+set(CMAKE_CXX_STANDARD 17 CACHE STRING "Native SDK configuration")
+set(CMAKE_CXX_STANDARD_REQUIRED ON CACHE BOOL "Native SDK configuration")
+set(BUILD_SHARED_LIBS ON CACHE BOOL "Native SDK configuration")
+set(VTK_INSTALL_SDK ON CACHE BOOL "Install the native development package")
+set(VTK_USE_64BIT_IDS ON CACHE BOOL "Native SDK ABI")
+set(VTK_USE_FUTURE_BOOL OFF CACHE BOOL "Native SDK ABI")
+set(VTK_USE_FUTURE_CONST OFF CACHE BOOL "Native SDK ABI")
+set(VTK_DEBUG_LEAKS OFF CACHE BOOL "Native SDK ABI")
+set(VTK_SMP_IMPLEMENTATION_TYPE Sequential CACHE STRING "Native SDK backend")

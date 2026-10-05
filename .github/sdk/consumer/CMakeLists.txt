@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 4.0)
+project(NativeSDKConsumer LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(VTK 9.7.1 EXACT REQUIRED COMPONENTS
+  CommonCore CommonDataModel RenderingExternal RenderingOpenGL2 RenderingVolumeOpenGL2 IOImage)
+add_executable(native_sdk_consumer consumer.cpp)
+target_link_libraries(native_sdk_consumer PRIVATE ${VTK_LIBRARIES})
+vtk_module_autoinit(TARGETS native_sdk_consumer MODULES ${VTK_LIBRARIES})
+enable_testing()
+add_test(NAME NativeSDKConsumer COMMAND native_sdk_consumer)

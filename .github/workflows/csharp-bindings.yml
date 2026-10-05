@@ -7,9 +7,12 @@ on:
     branches: [master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   VTK_VERSION: "9.6"
@@ -17,6 +20,8 @@ env:
   CMAKE_BUILD_PARALLEL_LEVEL: 8
   CCACHE_MAXSIZE: 2G
   CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_VERSION: '4.14.1'
+  SDK_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   build:
@@ -27,9 +32,11 @@ jobs:
           - os: windows-latest
             platform: win-x64
             artifact_ext: dll
+            archive: zip
           - os: macos-14-xlarge
             platform: osx-arm64
             artifact_ext: dylib
+            archive: tar.gz
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 240
@@ -39,39 +46,92 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.SDK_SOURCE_SHA }}
+          persist-credentials: false
           submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: ${{ runner.os == 'Windows' && 'x64' || 'arm64' }}
+
+      - name: Check storage reserve and additional peak
+        id: preflight
+        shell: bash
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --peak-gib 15
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Setup Ninja
-        uses: seanmiddleditch/gha-setup-ninja@master
+      - name: Install matching build tools
+        shell: bash
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 600 --
+          python -m pip install cmake==4.0.3 ninja==1.11.1.4
+
+      - name: Install verified compiler cache
+        shell: python
+        run: |
+          import hashlib
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import tarfile
+          import urllib.request
+          import zipfile
+
+          version = os.environ['CCACHE_VERSION']
+          if sys.platform == 'win32':
+              name = f'ccache-{version}-windows-x86_64.zip'
+              expected = '6219f3865ca59aec41ee4b678df171d5d35855ecb2b6dbbbd20690b3a68af7b4'
+              binary = 'ccache.exe'
+          else:
+              name = f'ccache-{version}-darwin.tar.gz'
+              expected = 'c279fa81e2e806b4d9e64d4a06cb569a84ef54151feef796e5d4f4e95a464563'
+              binary = 'ccache'
+          tools = Path(os.environ['RUNNER_TEMP']) / 'shared-vtk-ccache'
+          tools.mkdir()
+          archive = tools / name
+          url = f'https://github.com/ccache/ccache/releases/download/v{version}/{name}'
+          with urllib.request.urlopen(url, timeout=60) as response:
+              archive.write_bytes(response.read())
+          if hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
+              raise SystemExit('Compiler cache archive digest mismatch')
+          if name.endswith('.zip'):
+              with zipfile.ZipFile(archive) as bundle:
+                  bundle.extractall(tools)
+          else:
+              with tarfile.open(archive) as bundle:
+                  bundle.extractall(tools, filter='data')
+          executable, = (path for path in tools.rglob(binary) if path.is_file())
+          subprocess.run([str(executable), '--version'], check=True)
+          with open(os.environ['GITHUB_PATH'], 'a') as stream:
+              stream.write(str(executable.parent) + '\n')
 
       # ── Caching ──
       - name: Cache ccache
-        uses: actions/cache@v4
+        id: compiler_cache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ matrix.platform }}-${{ github.sha }}
+          key: shared-vtk-ccache-v1-${{ matrix.platform }}-${{ hashFiles('.github/sdk/native-sdk.cmake', '.github/workflows/csharp-bindings.yml') }}-${{ env.CCACHE_VERSION }}-${{ env.SDK_SOURCE_SHA }}
           restore-keys: |
+            shared-vtk-ccache-v1-${{ matrix.platform }}-${{ hashFiles('.github/sdk/native-sdk.cmake', '.github/workflows/csharp-bindings.yml') }}-${{ env.CCACHE_VERSION }}-
             ccache-${{ matrix.platform }}-
 
-      - name: Setup ccache (macOS)
-        if: runner.os == 'macOS'
+      - name: Record and reset compiler cache counters
+        shell: bash
         run: |
-          brew install ccache
-          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
-
-      - name: Setup ccache (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          choco install ccache -y
-          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $env:GITHUB_ENV
-          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $env:GITHUB_ENV
+          mkdir -p .sdk-evidence
+          ccache --version | tee .sdk-evidence/ccache-version.txt
+          ccache --show-config | tee .sdk-evidence/ccache-config.txt
+          ccache --show-stats --verbose | tee .sdk-evidence/ccache-before.txt
+          ccache --zero-stats
 
       - name: Cache vcpkg (Windows)
         if: runner.os == 'Windows'
@@ -98,14 +158,18 @@ jobs:
       - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
           vcpkg install --triplet x64-windows `
             openxr-loader `
             ffmpeg `
             boost-graph `
+            freeglut `
             libarchive
 
       # ── macOS dependencies ──
@@ -115,12 +179,25 @@ jobs:
           brew install ffmpeg hdf5 boost onnxruntime libarchive
           echo "CMAKE_PREFIX_PATH=$(brew --prefix libarchive)" >> "$GITHUB_ENV"
 
+      - name: Request CMake installable target graph
+        shell: bash
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 60 --
+          python .github/sdk/build_installable.py --build build --prepare
+
       # ── CMake Configure ──
       - name: Configure (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          cmake -G Ninja -B build `
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 -- `
+            cmake -G Ninja -B build -C .github/sdk/native-sdk.cmake `
             -DCMAKE_BUILD_TYPE=Release `
+            "-DCMAKE_INSTALL_PREFIX=$env:GITHUB_WORKSPACE/sdk" `
+            -DCMAKE_CXX_STANDARD=17 `
+            -DCMAKE_CXX_STANDARD_REQUIRED=ON `
+            -DBUILD_SHARED_LIBS=ON `
+            -DVTK_INSTALL_SDK=ON `
             -DCMAKE_C_COMPILER_LAUNCHER=ccache `
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
             -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
@@ -138,7 +215,7 @@ jobs:
             -DVTK_MODULE_ENABLE_VTK_IOXdmf3=NO `
             -DVTK_MODULE_ENABLE_VTK_ImagingOpenGL2=YES `
             -DVTK_MODULE_ENABLE_VTK_RenderingVolumeAMR=YES `
-            -DVTK_MODULE_ENABLE_VTK_RenderingExternal=NO `
+            -DVTK_MODULE_ENABLE_VTK_RenderingExternal=YES `
             -DVTK_MODULE_ENABLE_VTK_FiltersReebGraph=YES `
             -DVTK_MODULE_ENABLE_VTK_InfovisBoostGraphAlgorithms=YES `
             -DVTK_MODULE_ENABLE_VTK_SerializationManager=YES `
@@ -151,8 +228,18 @@ jobs:
       - name: Configure (macOS)
         if: runner.os == 'macOS'
         run: |
-          cmake -G Ninja -B build \
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 -- \
+            cmake -G Ninja -B build -C .github/sdk/native-sdk.cmake \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/sdk" \
+            -DCMAKE_CXX_STANDARD=17 \
+            -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DVTK_USE_COCOA=ON \
+            -DVTK_USE_X=OFF \
+            -DBUILD_SHARED_LIBS=ON \
+            -DVTK_INSTALL_SDK=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DVTK_WRAP_CSHARP=ON \
@@ -179,15 +266,94 @@ jobs:
 
       # ── Build ──
       - name: Build
-        run: cmake --build build --config Release --target VTKCSharpAssembly VTKCSharpTests
+        id: native_build
+        shell: bash
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 12600 --
+          cmake --build build --config Release --target VTKCSharpAssembly VTKCSharpTests
+
+      - name: Complete remaining SDK installable targets
+        shell: bash
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 12600 --
+          python .github/sdk/build_installable.py --build build
+
+      - name: Preserve successful compilation cache
+        if: always() && steps.native_build.outcome == 'success' && steps.compiler_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.compiler_cache.outputs.cache-primary-key }}
 
       - name: Print ccache stats
-        run: ccache -s
+        if: always() && steps.compiler_cache.outcome == 'success'
+        shell: bash
+        run: ccache --show-stats --verbose | tee .sdk-evidence/ccache-after.txt
 
       # ── Test ──
       - name: Run C# tests
         working-directory: build
         run: ctest -C Release -R vtkCSharpTests --output-on-failure --timeout 120
+
+      - name: Install SDK from shared build
+        shell: bash
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 --
+          cmake --install build --config Release --prefix sdk
+
+      - name: Package SDK
+        shell: bash
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 --
+          python .github/sdk/package_sdk.py --sdk sdk --build build --source .
+          --platform ${{ matrix.platform }} --output packages
+
+      - name: Verify relocated SDK consumer
+        id: verification
+        shell: bash
+        run: |
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 1200 -- \
+            python .github/sdk/verify_sdk.py \
+              --archive packages/vtk-sdk-${{ matrix.platform }}.${{ matrix.archive }} \
+              --consumer .github/sdk/consumer \
+              --work "$RUNNER_TEMP/vtk-sdk-relocated" --original-sdk sdk \
+            2>&1 | tee .sdk-evidence/verification.log
+
+      - name: Preserve consumer verification report
+        if: always() && steps.preflight.outcome != 'skipped'
+        shell: python
+        env:
+          VERIFICATION_OUTCOME: ${{ steps.verification.outcome }}
+        run: |
+          import os
+          from pathlib import Path
+          import shutil
+
+          report = Path(os.environ['RUNNER_TEMP']) / 'vtk-sdk-relocated' / 'verification.json'
+          if report.is_file():
+              shutil.copyfile(report, Path('.sdk-evidence') / 'verification.json')
+          elif os.environ['VERIFICATION_OUTCOME'] == 'success':
+              raise SystemExit('Successful consumer verification did not produce its report')
+
+      - name: Upload verified SDK and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtk-sdk-package-${{ matrix.platform }}
+          path: |
+            packages/vtk-sdk-${{ matrix.platform }}.${{ matrix.archive }}
+            packages/vtk-sdk-${{ matrix.platform }}.${{ matrix.archive }}.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload storage and verification evidence
+        if: always() && steps.preflight.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtk-sdk-evidence-${{ matrix.platform }}
+          path: .sdk-evidence/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
 
       # ── Package artifacts ──
       - name: Collect artifacts (Windows)
@@ -229,8 +395,11 @@ jobs:
           cp build/lib/VTK.CSharp.dll artifacts/managed/
 
           # Summary
-          echo "Native libraries: $(ls artifacts/native/*.dylib 2>/dev/null | wc -l)"
-          echo "Managed assembly: $(ls artifacts/managed/*.dll 2>/dev/null | wc -l)"
+          shopt -s nullglob
+          native_libraries=(artifacts/native/*.dylib)
+          managed_assemblies=(artifacts/managed/*.dll)
+          echo "Native libraries: ${#native_libraries[@]}"
+          echo "Managed assembly: ${#managed_assemblies[@]}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -238,6 +407,37 @@ jobs:
           name: vtk-csharp-${{ matrix.platform }}
           path: artifacts/
           retention-days: 30
+
+  sdk_unit:
+    name: SDK packaging unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SDK_SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run unit tests
+        run: python -m unittest discover -s .github/sdk/tests -v
+
+  sdk_prerelease:
+    name: Publish native SDK
+    needs: [build, sdk_unit]
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+    uses: ./.github/workflows/native-sdk.yml
+    with:
+      source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
 
   # ── Pre-release (PR) ──
   # After successful PR build, create a pre-release for testing before merge.
