@@ -185,6 +185,7 @@ class RuntimeBundle:
         self.system_directory = system_directory
         self.redist_directories = redist_directories
         self.sources = {}
+        self.filenames = {}
         self.source_digests = {}
         self.pending = deque()
         self.records = []
@@ -195,6 +196,17 @@ class RuntimeBundle:
         require(source.is_file(), f"Native dependency is missing: {source}")
         real = source.resolve()
         checksum = digest(real)
+        if self.platform == "win-x64":
+            key = source.name.casefold()
+            require(key not in self.source_digests or self.source_digests[key] == checksum,
+                    f"Native basename collision: {source.name}")
+            if key not in self.sources:
+                shutil.copy2(real, self.native / source.name)
+                self.sources[key] = real
+                self.filenames[key] = source.name
+                self.source_digests[key] = checksum
+                self.pending.append(key)
+            return self.filenames[key]
         for path in (real, source):
             name = path.name
             require(name not in self.source_digests or self.source_digests[name] == checksum,
@@ -241,8 +253,9 @@ class RuntimeBundle:
 
     def close(self):
         while self.pending:
-            name = self.pending.popleft()
-            source = self.sources[name]
+            key = self.pending.popleft()
+            name = self.filenames.get(key, key)
+            source = self.sources[key]
             info = self.tools.inspect(source)
             replacements = {}
             for dependency in info["dependencies"]:
@@ -254,7 +267,7 @@ class RuntimeBundle:
                 packaged_name = self.copy_library(candidate)
                 replacements[dependency] = ("@loader_path/" if self.platform == "osx-arm64" else "") + packaged_name
             self.records.append({"name": name, "source_path": str(source),
-                                 "source_sha256": self.source_digests[name], "original_imports": info,
+                                 "source_sha256": self.source_digests[key], "original_imports": info,
                                  "packaged_dependencies": replacements})
             if self.platform == "osx-arm64":
                 library = self.native / name
@@ -339,7 +352,7 @@ def package_csharp(sdk, build, output, platform, dependency_directories=(), tool
                     bundle.copy_library(library)
     helper = "vtkCSharpHelper.dll" if platform == "win-x64" else "libvtkCSharpHelper.dylib"
     require((output / "native" / helper).is_file(), "Native C# helper is missing")
-    require(any("CommonCoreCSharp" in name for name in bundle.sources), "Core C# wrapper is missing")
+    require(any("commoncorecsharp" in name.casefold() for name in bundle.sources), "Core C# wrapper is missing")
     bundle.close()
     validation = validate_native_runtime(output, platform, tools, system_directory, minimum_macos)
     licenses = copy_licenses(output, source, bundle.records, dependency_directories)

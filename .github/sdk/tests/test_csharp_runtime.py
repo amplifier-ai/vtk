@@ -194,6 +194,35 @@ class CSharpRuntime(unittest.TestCase):
         self.assertFalse((self.output / "native/kernel32.dll").exists())
         self.assertIn("kernel32.dll", result["system_dependencies"])
 
+    def test_windows_resolved_filename_keeps_import_name_without_output_symlink(self):
+        native = self.output / "native"
+        native.mkdir(parents=True)
+        library = self.library(self.root / "redist/VCRUNTIME140.dll")
+        imported = self.root / "imports/vcruntime140.dll"
+        imported.parent.mkdir()
+        imported.symlink_to(library)
+        bundle = self.packager.RuntimeBundle(self.sdk, self.output, "win-x64",
+                                            self.tools, [], None, [])
+        bundle.copy_library(imported)
+        bundle.copy_library(library)
+        files = list(native.iterdir())
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0].name, imported.name)
+        self.assertFalse(files[0].is_symlink())
+        self.assertEqual(files[0].read_bytes(), library.read_bytes())
+
+    def test_windows_case_insensitive_basename_collision_refuses_overwrite(self):
+        native = self.output / "native"
+        native.mkdir(parents=True)
+        first = self.library(self.root / "first/Dependency.dll")
+        second = self.library(self.root / "second/dependency.dll", ["kernel32.dll"])
+        bundle = self.packager.RuntimeBundle(self.sdk, self.output, "win-x64",
+                                            self.tools, [], None, [])
+        bundle.copy_library(first)
+        with self.assertRaisesRegex(RuntimeError, "collision"):
+            bundle.copy_library(second)
+        self.assertEqual((native / first.name).read_bytes(), first.read_bytes())
+
     def test_windows_vc_runtime_is_bundled_from_redist_instead_of_using_system_copy(self):
         manifest = json.loads((self.sdk / "sdk-manifest.json").read_text())
         manifest["platform"] = "win-x64"
