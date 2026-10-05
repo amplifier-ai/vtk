@@ -427,12 +427,13 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s .github/sdk/tests -v
 
-  sdk_prerelease:
+  sdk_publication:
     name: Publish native SDK
     needs: [build, sdk_unit]
     if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/master')
     permissions:
       contents: write
     uses: ./.github/workflows/native-sdk.yml

@@ -25,8 +25,12 @@ VTK tree. `cmake --install` then supplies the SDK package inputs.
 
 [`../workflows/native-sdk.yml`](../workflows/native-sdk.yml) is a reusable
 publication workflow. It downloads the verified SDK artifacts from the producer
-run and creates a distinct prerelease. It has no compiler jobs or independent
-VTK configuration. Existing C# runtime artifact names and packaging remain intact.
+run and creates a distinct prerelease for an internal pull request or a stable
+SDK release after a push to `master`. Both release types use unique run/attempt
+tags and include archives, checksums and qualification evidence. SDK releases do
+not replace the latest C# runtime release. The publisher has no compiler jobs or
+independent VTK configuration. Existing C# runtime artifact names and packaging
+remain intact.
 
 ## SDK archives and evidence
 

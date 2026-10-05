@@ -19,11 +19,12 @@ defaults:
     shell: bash
 
 jobs:
-  prerelease:
-    name: Publish validated SDK prerelease
+  publish:
+    name: Publish validated SDK
     if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -61,11 +62,18 @@ jobs:
               > "vtk-sdk-evidence-$platform.tar.gz.sha256")
           done
 
-      - name: Create unique prerelease with source revision
+      - name: Create unique release with source revision
         env:
           GH_TOKEN: ${{ github.token }}
           SDK_PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
+          release_flags=()
+          if [ "$GITHUB_EVENT_NAME" = 'pull_request' ]; then
+            release_flags+=(--prerelease)
+          elif [ "$GITHUB_EVENT_NAME" != 'push' ] || [ "$GITHUB_REF" != 'refs/heads/master' ]; then
+            echo "SDK publication requires an internal PR or a push to master" >&2
+            exit 1
+          fi
           tag="vtk-sdk-run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}"
           existing=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq 'length')
           if [ "$existing" -ne 0 ]; then
@@ -80,10 +88,12 @@ jobs:
           source = os.environ['SDK_SOURCE_SHA']
           run = os.environ['GITHUB_RUN_ID']
           attempt = os.environ['GITHUB_RUN_ATTEMPT']
+          request = os.environ['SDK_PR_URL']
+          origin = f'Pull request: {request}.\n\n' if request else 'Release branch: `master`.\n\n'
           Path('release-notes.md').write_text(
               'Native C++ SDK for win-x64 and osx-arm64.\n\n'
               f'Source commit: [{source}](https://github.com/{repository}/commit/{source}).\n\n'
-              f'Pull request: {os.environ["SDK_PR_URL"]}.\n\n'
+              f'{origin}'
               f'Workflow run: https://github.com/{repository}/actions/runs/{run}/attempts/{attempt}.\n\n'
               'Both SDKs passed installation, archive validation, and a consumer build and test '
               'after relocation and removal of the original install. SHA256 files and verification '
@@ -93,4 +103,4 @@ jobs:
           PY
           gh release create "$tag" packages/* --repo "$GITHUB_REPOSITORY" \
             --target "$SDK_SOURCE_SHA" --title "VTK Native SDK $tag" \
-            --notes-file release-notes.md --prerelease
+            --notes-file release-notes.md --latest=false "${release_flags[@]}"
