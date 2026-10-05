@@ -25,12 +25,27 @@ VTK tree. `cmake --install` then supplies the SDK package inputs.
 
 [`../workflows/native-sdk.yml`](../workflows/native-sdk.yml) is a reusable
 publication workflow. It downloads the verified SDK artifacts from the producer
-run and creates a distinct prerelease for an internal pull request or a stable
-SDK release after a push to `master`. Both release types use unique run/attempt
-tags and include archives, checksums and qualification evidence. SDK releases do
-not replace the latest C# runtime release. The publisher has no compiler jobs or
+run and creates a stable SDK release only after a successful push build of
+`master`. SDK releases use unique run/attempt tags and include archives, checksums
+and qualification evidence. Pull requests build and test both products and retain
+their packages and evidence as Actions artifacts for 30 days; they do not publish
+GitHub releases. SDK releases do not replace the latest C# runtime release. The
+publisher has no compiler jobs or
 independent VTK configuration. Existing C# runtime artifact names and packaging
 remain intact.
+
+Download PR candidates from the producer run's Artifacts section:
+
+```shell
+gh run download {run-id} --repo amplifier-ai/vtk \
+  --name vtk-sdk-package-win-x64 --dir {destination}
+```
+
+SDK packages include their checksum files. Native consumer receipts and logs are
+in the separate `vtk-sdk-evidence-{platform}` artifacts. C# artifacts retain
+`native/` libraries and `managed/VTK.CSharp.dll` under `vtk-csharp-{platform}`.
+PR builds still use Release configuration and run all existing build and SDK
+checks; GitHub Release publication is a separate master-only operation.
 
 ## SDK archives and evidence
 

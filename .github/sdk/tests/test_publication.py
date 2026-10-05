@@ -49,7 +49,6 @@ class NativeSDKPublication(unittest.TestCase):
                 "GITHUB_RUN_ID": "123",
                 "GITHUB_RUN_ATTEMPT": "1",
                 "SDK_SOURCE_SHA": "a" * 40,
-                "SDK_PR_URL": "https://github.com/amplifier-ai/vtk/pull/3" if event == "pull_request" else "",
                 "EXISTING_TAG": "1" if existing_tag else "0",
             }
             result = subprocess.run(
@@ -72,11 +71,11 @@ class NativeSDKPublication(unittest.TestCase):
         self.assertEqual(arguments[arguments.index("--target") + 1], "a" * 40)
         self.assertNotIn("Pull request:", notes)
 
-    def test_pull_request_keeps_sdk_prerelease(self):
+    def test_pull_request_cannot_publish_sdk(self):
         result, arguments, notes = self.publish("pull_request", "refs/pull/3/merge")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("--prerelease", arguments)
-        self.assertIn("https://github.com/amplifier-ai/vtk/pull/3", notes)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIsNone(arguments)
+        self.assertEqual(notes, "")
 
     def test_other_push_branch_cannot_publish_stable_sdk(self):
         result, arguments, _ = self.publish("push", "refs/heads/feature")

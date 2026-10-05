@@ -431,58 +431,12 @@ jobs:
   sdk_publication:
     name: Publish native SDK
     needs: [build, sdk_unit]
-    if: >-
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
       contents: write
     uses: ./.github/workflows/native-sdk.yml
     with:
-      source_sha: ${{ github.event.pull_request.head.sha || github.sha }}
-
-  # ── Pre-release (PR) ──
-  # After successful PR build, create a pre-release for testing before merge.
-  prerelease:
-    if: github.event_name == 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    name: Create pre-release
-    permissions:
-      contents: write
-
-    steps:
-      - name: Generate tag
-        id: tag
-        run: echo "tag=v$(date -u +'%Y.%m.%d.%H%M')-rc" >> "$GITHUB_OUTPUT"
-
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: vtk-csharp-win-x64
-          path: vtk-csharp-win-x64
-
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: vtk-csharp-osx-arm64
-          path: vtk-csharp-osx-arm64
-
-      - name: Create archives
-        run: |
-          cd vtk-csharp-win-x64 && zip -r ../vtk-csharp-win-x64.zip . && cd ..
-          cd vtk-csharp-osx-arm64 && tar czf ../vtk-csharp-osx-arm64.tar.gz . && cd ..
-
-      - name: Create GitHub pre-release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: VTK C# Bindings ${{ steps.tag.outputs.tag }}
-          prerelease: true
-          generate_release_notes: true
-          files: |
-            vtk-csharp-win-x64.zip
-            vtk-csharp-osx-arm64.tar.gz
+      source_sha: ${{ github.sha }}
 
   # ── Release (master) ──
   # After successful build on master, create a stable release.
@@ -520,6 +474,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ env.SDK_SOURCE_SHA }}
           name: VTK C# Bindings ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
           files: |
