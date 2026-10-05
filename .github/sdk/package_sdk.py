@@ -56,7 +56,7 @@ def package_sdk(sdk, build, source, platform, output):
         require(values.get(name) == value, f"SDK profile mismatch: {name}")
     if platform == "osx-arm64":
         require(values.get("CMAKE_OSX_ARCHITECTURES") == "arm64", "SDK must target arm64")
-        require(values.get("CMAKE_OSX_DEPLOYMENT_TARGET") == "14.0", "SDK must target macOS 14.0")
+        require(values.get("CMAKE_OSX_DEPLOYMENT_TARGET") == "26.0", "SDK must target macOS 26.0")
     version_file = (source / "CMake/vtkVersion.cmake").read_text()
     version = ".".join(re.search(rf"set\({name} (\d+)\)", version_file).group(1)
                        for name in ("VTK_MAJOR_VERSION", "VTK_MINOR_VERSION", "VTK_BUILD_VERSION"))

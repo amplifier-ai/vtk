@@ -44,10 +44,10 @@ def main():
          f"-DVTK_DIR={sdk / 'lib/cmake/vtk-9.7'}", "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
          "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF"],
         ["cmake", "--build", str(build), "--parallel", "2"],
-        ["ctest", "--test-dir", str(build), "--output-on-failure", "-V"],
+        ["ctest", "--test-dir", str(build), "--output-on-failure", "--no-tests=error", "-V"],
     ]
     if sys.platform == "darwin":
-        commands[0].extend(["-DCMAKE_OSX_ARCHITECTURES=arm64", "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0"])
+        commands[0].extend(["-DCMAKE_OSX_ARCHITECTURES=arm64", "-DCMAKE_OSX_DEPLOYMENT_TARGET=26.0"])
     receipts = []
     result = {"archive_sha256": checksum, "source_revision": manifest["source_revision"],
               "platform": manifest["platform"], "original_sdk_removed": True,

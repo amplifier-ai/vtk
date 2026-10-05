@@ -43,7 +43,7 @@ class NativeSDKPackaging(unittest.TestCase):
             "CMAKE_BUILD_TYPE": "Release", "BUILD_SHARED_LIBS": "ON", "VTK_INSTALL_SDK": "ON",
             "VTK_USE_64BIT_IDS": "ON", "VTK_USE_FUTURE_BOOL": "OFF", "VTK_USE_FUTURE_CONST": "OFF",
             "VTK_SMP_IMPLEMENTATION_TYPE": "Sequential", "CMAKE_OSX_ARCHITECTURES": "arm64",
-            "CMAKE_OSX_DEPLOYMENT_TARGET": "14.0",
+            "CMAKE_OSX_DEPLOYMENT_TARGET": "26.0",
         }
         self.write_cache()
 
@@ -89,6 +89,12 @@ class NativeSDKPackaging(unittest.TestCase):
         self.cache["VTK_USE_64BIT_IDS"] = "OFF"
         self.write_cache()
         with self.assertRaisesRegex(RuntimeError, "VTK_USE_64BIT_IDS"):
+            self.package()
+
+    def test_older_macos_deployment_target_refuses_package(self):
+        self.cache["CMAKE_OSX_DEPLOYMENT_TARGET"] = "14.0"
+        self.write_cache()
+        with self.assertRaisesRegex(RuntimeError, "macOS 26"):
             self.package()
 
     def test_absolute_build_path_in_cmake_refuses_package(self):

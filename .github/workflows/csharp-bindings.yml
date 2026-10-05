@@ -15,7 +15,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  VTK_VERSION: "9.6"
   DOTNET_VERSION: "8.0"
   CMAKE_BUILD_PARALLEL_LEVEL: 8
   CCACHE_MAXSIZE: 2G
@@ -33,7 +32,7 @@ jobs:
             platform: win-x64
             artifact_ext: dll
             archive: zip
-          - os: macos-14-xlarge
+          - os: macos-26-xlarge
             platform: osx-arm64
             artifact_ext: dylib
             archive: tar.gz
@@ -73,7 +72,7 @@ jobs:
           python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 600 --
           python -m pip install cmake==4.0.3 ninja==1.11.1.4
 
-      - name: Install verified compiler cache
+      - name: Install ccache
         shell: python
         run: |
           import hashlib
@@ -193,12 +192,7 @@ jobs:
         run: |
           python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 -- `
             cmake -G Ninja -B build -C .github/sdk/native-sdk.cmake `
-            -DCMAKE_BUILD_TYPE=Release `
             "-DCMAKE_INSTALL_PREFIX=$env:GITHUB_WORKSPACE/sdk" `
-            -DCMAKE_CXX_STANDARD=17 `
-            -DCMAKE_CXX_STANDARD_REQUIRED=ON `
-            -DBUILD_SHARED_LIBS=ON `
-            -DVTK_INSTALL_SDK=ON `
             -DCMAKE_C_COMPILER_LAUNCHER=ccache `
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
             -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
@@ -231,16 +225,11 @@ jobs:
         run: |
           python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 -- \
             cmake -G Ninja -B build -C .github/sdk/native-sdk.cmake \
-            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/sdk" \
-            -DCMAKE_CXX_STANDARD=17 \
-            -DCMAKE_CXX_STANDARD_REQUIRED=ON \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0 \
             -DVTK_USE_COCOA=ON \
             -DVTK_USE_X=OFF \
-            -DBUILD_SHARED_LIBS=ON \
-            -DVTK_INSTALL_SDK=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DVTK_WRAP_CSHARP=ON \
@@ -294,7 +283,7 @@ jobs:
       # ── Test ──
       - name: Run C# tests
         working-directory: build
-        run: ctest -C Release -R vtkCSharpTests --output-on-failure --timeout 120
+        run: ctest -C Release -R vtkCSharpTests --output-on-failure --no-tests=error --timeout 120
 
       - name: Install SDK from shared build
         shell: bash
@@ -308,6 +297,29 @@ jobs:
           python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 --
           python .github/sdk/package_sdk.py --sdk sdk --build build --source .
           --platform ${{ matrix.platform }} --output packages
+
+      - name: Package installed CSharp runtime
+        shell: python
+        env:
+          RUNTIME_PLATFORM: ${{ matrix.platform }}
+          RUNTIME_ARCHIVE: ${{ matrix.archive }}
+        run: |
+          import os
+          import subprocess
+          import sys
+
+          platform = os.environ['RUNTIME_PLATFORM']
+          archive = os.environ['RUNTIME_ARCHIVE']
+          command = [sys.executable, '.github/sdk/run_guarded.py', '--path', '.',
+                     '--reserve-gib', '20', '--timeout', '1200', '--', sys.executable,
+                     '.github/sdk/package_csharp.py', '--sdk', 'sdk', '--build', 'build',
+                     '--output', 'artifacts', '--platform', platform,
+                     '--archive', f'packages/vtk-csharp-{platform}.{archive}']
+          if platform == 'win-x64':
+              command.extend(['--dependency-directory', 'C:/vcpkg/installed/x64-windows/bin'])
+          else:
+              command.extend(['--minimum-macos', '26.0'])
+          subprocess.run(command, check=True)
 
       - name: Verify relocated SDK consumer
         id: verification
@@ -336,6 +348,33 @@ jobs:
           elif os.environ['VERIFICATION_OUTCOME'] == 'success':
               raise SystemExit('Successful consumer verification did not produce its report')
 
+      - name: Verify relocated CSharp archive
+        id: csharp_verification
+        shell: bash
+        run: |
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 1200 -- \
+            python .github/sdk/verify_csharp.py \
+              --package packages/vtk-csharp-${{ matrix.platform }}.${{ matrix.archive }} \
+              --consumer .github/sdk/csharp-consumer --build build \
+              --work "$RUNNER_TEMP/vtk-csharp-relocated" --platform ${{ matrix.platform }} \
+            2>&1 | tee .sdk-evidence/csharp-verification.log
+
+      - name: Preserve CSharp verification report
+        if: always() && steps.preflight.outcome != 'skipped'
+        shell: python
+        env:
+          VERIFICATION_OUTCOME: ${{ steps.csharp_verification.outcome }}
+        run: |
+          import os
+          from pathlib import Path
+          import shutil
+
+          report = Path(os.environ['RUNNER_TEMP']) / 'vtk-csharp-relocated' / 'csharp-verification.json'
+          if report.is_file():
+              shutil.copyfile(report, Path('.sdk-evidence') / 'csharp-verification.json')
+          elif os.environ['VERIFICATION_OUTCOME'] == 'success':
+              raise SystemExit('Successful CSharp verification did not produce its report')
+
       - name: Upload verified SDK and checksum
         uses: actions/upload-artifact@v4
         with:
@@ -356,57 +395,12 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # ── Package artifacts ──
-      - name: Collect artifacts (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts/native
-          New-Item -ItemType Directory -Force -Path artifacts/managed
-
-          # Native CSharp libraries
-          Copy-Item build/bin/Release/*CSharp*.dll artifacts/native/ -ErrorAction SilentlyContinue
-          Copy-Item build/bin/*CSharp*.dll artifacts/native/ -ErrorAction SilentlyContinue
-          Copy-Item build/lib/csharp/*CSharp*.dll artifacts/native/ -ErrorAction SilentlyContinue
-
-          # VTK core native libraries (needed at runtime)
-          Copy-Item build/bin/Release/vtk*.dll artifacts/native/ -ErrorAction SilentlyContinue
-          Copy-Item build/bin/vtk*.dll artifacts/native/ -ErrorAction SilentlyContinue
-
-          # Managed assembly (dotnet build -o places it in lib/)
-          Copy-Item build/lib/VTK.CSharp.dll artifacts/managed/
-
-          # Summary
-          Write-Host "Native libraries: $((Get-ChildItem artifacts/native/*.dll).Count)"
-          Write-Host "Managed assembly: $((Get-ChildItem artifacts/managed/*.dll).Count)"
-
-      - name: Collect artifacts (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p artifacts/native artifacts/managed
-
-          # Native CSharp libraries
-          cp build/lib/csharp/*CSharp*.dylib artifacts/native/ 2>/dev/null || true
-          cp build/lib/*CSharp*.dylib artifacts/native/ 2>/dev/null || true
-
-          # VTK core native libraries (needed at runtime)
-          cp build/lib/libvtk*.dylib artifacts/native/ 2>/dev/null || true
-
-          # Managed assembly (dotnet build -o places it in lib/)
-          cp build/lib/VTK.CSharp.dll artifacts/managed/
-
-          # Summary
-          shopt -s nullglob
-          native_libraries=(artifacts/native/*.dylib)
-          managed_assemblies=(artifacts/managed/*.dll)
-          echo "Native libraries: ${#native_libraries[@]}"
-          echo "Managed assembly: ${#managed_assemblies[@]}"
-
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: vtk-csharp-${{ matrix.platform }}
-          path: artifacts/
+          path: packages/vtk-csharp-${{ matrix.platform }}.${{ matrix.archive }}
+          if-no-files-found: error
           retention-days: 30
 
   sdk_unit:
@@ -451,32 +445,39 @@ jobs:
     steps:
       - name: Generate tag
         id: tag
-        run: echo "tag=v$(date -u +'%Y.%m.%d.%H%M')" >> "$GITHUB_OUTPUT"
+        run: echo "tag=v$(date -u +'%Y.%m.%d.%H%M')-run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify unique CSharp release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$RELEASE_TAG" --jq 'length')
+          if [ "$existing" -ne 0 ]; then
+            echo "Refusing to reuse existing CSharp release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
 
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
           name: vtk-csharp-win-x64
-          path: vtk-csharp-win-x64
+          path: packages
 
       - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
           name: vtk-csharp-osx-arm64
-          path: vtk-csharp-osx-arm64
-
-      - name: Create archives
-        run: |
-          cd vtk-csharp-win-x64 && zip -r ../vtk-csharp-win-x64.zip . && cd ..
-          cd vtk-csharp-osx-arm64 && tar czf ../vtk-csharp-osx-arm64.tar.gz . && cd ..
+          path: packages
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           target_commitish: ${{ env.SDK_SOURCE_SHA }}
+          overwrite_files: false
           name: VTK C# Bindings ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
           files: |
-            vtk-csharp-win-x64.zip
-            vtk-csharp-osx-arm64.tar.gz
+            packages/vtk-csharp-win-x64.zip
+            packages/vtk-csharp-osx-arm64.tar.gz

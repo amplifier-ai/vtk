@@ -27,6 +27,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout validated master source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
       - name: Download verified SDK packages
         uses: actions/download-artifact@v4
         with:
@@ -48,10 +54,8 @@ jobs:
 
       - name: Validate asset checksums and collect evidence
         run: |
-          cd packages
-          sha256sum --check vtk-sdk-win-x64.zip.sha256
-          sha256sum --check vtk-sdk-osx-arm64.tar.gz.sha256
-          cd ..
+          python .github/sdk/validate_release.py \
+            --packages packages --evidence evidence --source-sha "$SDK_SOURCE_SHA"
           for platform in win-x64 osx-arm64; do
             test -s "evidence/$platform/verification.json"
             tar -czf "packages/vtk-sdk-evidence-$platform.tar.gz" -C "evidence/$platform" .
