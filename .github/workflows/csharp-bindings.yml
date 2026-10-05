@@ -169,6 +169,7 @@ jobs:
             openxr-loader `
             ffmpeg `
             boost-graph `
+            freeglut `
             libarchive
 
       # ── macOS dependencies ──
