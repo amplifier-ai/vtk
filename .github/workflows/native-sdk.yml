@@ -1,248 +1,26 @@
-name: Native SDK
+name: Native SDK publication
 
 on:
-  pull_request:
-    branches: [master]
-  push:
-    branches: [master, 'codex/native-sdk-cache']
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Source commit used to build the SDK artifacts in the calling run
+        required: true
+        type: string
 
 permissions:
-  contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  contents: write
 
 env:
-  SDK_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  CCACHE_VERSION: '4.14.1'
-  CCACHE_DIR: ${{ github.workspace }}/.ccache-native-sdk
-  CCACHE_BASEDIR: ${{ github.workspace }}
-  CCACHE_MAXSIZE: 2G
-  CCACHE_COMPILERCHECK: content
+  SDK_SOURCE_SHA: ${{ inputs.source_sha }}
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  unit:
-    name: SDK packaging unit tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.SDK_SOURCE_SHA }}
-          persist-credentials: false
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Run unit tests
-        run: python -m unittest discover -s .github/sdk/tests -v
-
-  sdk:
-    name: Native SDK (${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win-x64
-            archive: zip
-          - os: macos-14-xlarge
-            platform: osx-arm64
-            archive: tar.gz
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 240
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.SDK_SOURCE_SHA }}
-          persist-credentials: false
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          architecture: ${{ runner.os == 'Windows' && 'x64' || 'arm64' }}
-
-      - name: Setup MSVC x64
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Check storage reserve and additional peak
-        id: preflight
-        run: >-
-          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --peak-gib 15
-
-      - name: Install matching build tools
-        run: >-
-          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 600 --
-          python -m pip install cmake==4.0.3 ninja==1.11.1.4
-
-      - name: Install verified compiler cache
-        shell: python
-        run: |
-          import hashlib
-          import os
-          from pathlib import Path
-          import subprocess
-          import sys
-          import tarfile
-          import urllib.request
-          import zipfile
-
-          version = os.environ['CCACHE_VERSION']
-          if sys.platform == 'win32':
-              name = f'ccache-{version}-windows-x86_64.zip'
-              expected = '6219f3865ca59aec41ee4b678df171d5d35855ecb2b6dbbbd20690b3a68af7b4'
-              binary = 'ccache.exe'
-          else:
-              name = f'ccache-{version}-darwin.tar.gz'
-              expected = 'c279fa81e2e806b4d9e64d4a06cb569a84ef54151feef796e5d4f4e95a464563'
-              binary = 'ccache'
-          tools = Path(os.environ['RUNNER_TEMP']) / 'native-sdk-ccache'
-          tools.mkdir()
-          archive = tools / name
-          url = f'https://github.com/ccache/ccache/releases/download/v{version}/{name}'
-          with urllib.request.urlopen(url, timeout=60) as response:
-              archive.write_bytes(response.read())
-          if hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
-              raise SystemExit('Compiler cache archive digest mismatch')
-          if name.endswith('.zip'):
-              with zipfile.ZipFile(archive) as bundle:
-                  bundle.extractall(tools)
-          else:
-              with tarfile.open(archive) as bundle:
-                  bundle.extractall(tools, filter='data')
-          executable, = (path for path in tools.rglob(binary) if path.is_file())
-          subprocess.run([str(executable), '--version'], check=True)
-          with open(os.environ['GITHUB_PATH'], 'a') as stream:
-              stream.write(str(executable.parent) + '\n')
-
-      - name: Restore compiler and bundled dependency cache
-        id: compiler_cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: native-sdk-ccache-v1-${{ matrix.platform }}-${{ hashFiles('.github/sdk/native-sdk.cmake') }}-${{ env.CCACHE_VERSION }}-${{ env.SDK_SOURCE_SHA }}
-          restore-keys: |
-            native-sdk-ccache-v1-${{ matrix.platform }}-${{ hashFiles('.github/sdk/native-sdk.cmake') }}-${{ env.CCACHE_VERSION }}-
-            ccache-${{ matrix.platform }}-
-
-      - name: Record and reset compiler cache counters
-        run: |
-          mkdir -p .sdk-evidence
-          ccache --show-stats --verbose | tee .sdk-evidence/ccache-before.txt
-          ccache --zero-stats
-
-      - name: Configure native SDK
-        shell: python
-        run: |
-          import os
-          import subprocess
-          import sys
-
-          command = [
-              sys.executable, '.github/sdk/run_guarded.py',
-              '--path', '.', '--reserve-gib', '20', '--timeout', '900', '--',
-              'cmake', '-S', '.', '-B', 'build', '-G', 'Ninja',
-              '-C', '.github/sdk/native-sdk.cmake',
-              '-DCMAKE_BUILD_TYPE=Release',
-              '-DCMAKE_INSTALL_PREFIX=' + os.path.join(os.getcwd(), 'sdk'),
-              '-DCMAKE_CXX_STANDARD=17', '-DCMAKE_CXX_STANDARD_REQUIRED=ON',
-              '-DCMAKE_C_COMPILER_LAUNCHER=ccache', '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache',
-              '-DBUILD_SHARED_LIBS=ON', '-DVTK_INSTALL_SDK=ON',
-              '-DVTK_ENABLE_WRAPPING=OFF', '-DVTK_WRAP_CSHARP=OFF',
-              '-DVTK_WRAP_PYTHON=OFF', '-DVTK_WRAP_JAVA=OFF',
-              '-DVTK_WRAP_JAVASCRIPT=OFF', '-DVTK_WRAP_SERIALIZATION=OFF',
-          ]
-          if sys.platform == 'darwin':
-              command.extend([
-                  '-DCMAKE_OSX_ARCHITECTURES=arm64',
-                  '-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0',
-                  '-DVTK_USE_COCOA=ON', '-DVTK_USE_X=OFF',
-              ])
-          subprocess.run(command, check=True)
-
-      - name: Build all native installable targets
-        run: >-
-          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 12600 --
-          cmake --build build --config Release --parallel 4
-
-      - name: Record compiler cache hits and misses
-        if: always() && steps.compiler_cache.outcome == 'success'
-        run: ccache --show-stats --verbose | tee .sdk-evidence/ccache-after.txt
-
-      - name: Install SDK
-        run: >-
-          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 --
-          cmake --install build --config Release --prefix sdk
-
-      - name: Package SDK
-        run: >-
-          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 --
-          python .github/sdk/package_sdk.py --sdk sdk --build build --source .
-          --platform ${{ matrix.platform }} --output packages
-
-      - name: Verify relocated consumer
-        id: verification
-        run: |
-          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 1200 -- \
-            python .github/sdk/verify_sdk.py \
-              --archive packages/vtk-sdk-${{ matrix.platform }}.${{ matrix.archive }} \
-              --consumer .github/sdk/consumer \
-              --work "$RUNNER_TEMP/vtk-sdk-relocated" --original-sdk sdk \
-            2>&1 | tee .sdk-evidence/verification.log
-
-      - name: Preserve consumer verification report
-        if: always() && steps.preflight.outcome != 'skipped'
-        shell: python
-        env:
-          VERIFICATION_OUTCOME: ${{ steps.verification.outcome }}
-        run: |
-          import os
-          from pathlib import Path
-          import shutil
-
-          report = Path(os.environ['RUNNER_TEMP']) / 'vtk-sdk-relocated' / 'verification.json'
-          if report.is_file():
-              shutil.copyfile(report, Path('.sdk-evidence') / 'verification.json')
-          elif os.environ['VERIFICATION_OUTCOME'] == 'success':
-              raise SystemExit('Successful consumer verification did not produce its report')
-
-      - name: Upload verified SDK and checksum
-        uses: actions/upload-artifact@v4
-        with:
-          name: vtk-sdk-package-${{ matrix.platform }}
-          path: |
-            packages/vtk-sdk-${{ matrix.platform }}.${{ matrix.archive }}
-            packages/vtk-sdk-${{ matrix.platform }}.${{ matrix.archive }}.sha256
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload storage and verification evidence
-        if: always() && steps.preflight.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
-        with:
-          name: vtk-sdk-evidence-${{ matrix.platform }}
-          path: .sdk-evidence/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 30
-
   prerelease:
     name: Publish validated SDK prerelease
-    needs: [unit, sdk]
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
