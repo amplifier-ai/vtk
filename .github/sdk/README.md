@@ -46,6 +46,8 @@ in the separate `vtk-sdk-evidence-{platform}` artifacts. The `vtk-csharp-{platfo
 artifacts contain `vtk-csharp-{platform}.zip` or `.tar.gz`; extraction supplies
 `native/` libraries, `managed/VTK.CSharp.dll`, dependency license evidence and
 `runtime-manifest.json`.
+The SDK evidence also retains `csharp-tests.log`, including the actual binding
+coverage counts that successful CTest output normally hides.
 PR builds still use Release configuration and run all existing build and SDK
 checks; GitHub Release publication is a separate master-only operation.
 
@@ -106,6 +108,8 @@ The native SDK publisher additionally verifies each receipt's success, exact
 source/platform/archive identity and successful configure/build/CTest commands.
 C# and SDK release tags target the compiled source and use unique run/attempt
 identities; publishers refuse unexpected tag reuse or asset replacement.
+The macOS build additionally runs the packaging unit suite with real Mach-O tools
+to check loader-path edits and repeated rewriting of already portable libraries.
 
 ## Consume an SDK
 
