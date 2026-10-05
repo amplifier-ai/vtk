@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>VTK.CSharp.BindingCoverageRegression</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../CSharpBindingCoverage.cs" Link="CSharpBindingCoverage.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="StubWrappers.cs" />
+  </ItemGroup>
+</Project>
