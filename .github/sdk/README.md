@@ -58,6 +58,14 @@ The compilation cache is saved after a successful native build, independently
 of subsequent SDK packaging. Packaging failures still fail the job and block
 publication; they do not discard valid cached compiler objects.
 
+Cache lookup prefers the exact build profile, then the shared cache for the same
+platform, before legacy caches. Publication-only workflow edits can change the
+outer cache key without changing native compilation. The shared fallback lets
+ccache validate and reuse compatible objects; compiler, flag and header checks
+remain enabled. GitHub scopes PR caches to that PR's merge ref. A warm PR rerun
+does not establish that `master` or a sibling PR can access those objects. Compare
+the restored key, ref and per-run statistics when qualifying cache performance.
+
 ## Consume an SDK
 
 Verify the archive checksum and extract once into a reusable directory. A C++

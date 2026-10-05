@@ -122,6 +122,7 @@ jobs:
           key: shared-vtk-ccache-v1-${{ matrix.platform }}-${{ hashFiles('.github/sdk/native-sdk.cmake', '.github/workflows/csharp-bindings.yml') }}-${{ env.CCACHE_VERSION }}-${{ env.SDK_SOURCE_SHA }}
           restore-keys: |
             shared-vtk-ccache-v1-${{ matrix.platform }}-${{ hashFiles('.github/sdk/native-sdk.cmake', '.github/workflows/csharp-bindings.yml') }}-${{ env.CCACHE_VERSION }}-
+            shared-vtk-ccache-v1-${{ matrix.platform }}-
             ccache-${{ matrix.platform }}-
 
       - name: Record and reset compiler cache counters
