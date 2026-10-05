@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -133,6 +134,27 @@ class CSharpRuntime(unittest.TestCase):
         native.write_text(json.dumps(data))
         with self.assertRaisesRegex(RuntimeError, "rpath"):
             self.packager.validate_native_runtime(self.output, "osx-arm64", tools=self.tools)
+
+    @unittest.skipUnless(sys.platform == "darwin", "Requires the macOS Mach-O tools")
+    def test_native_rpath_rewrite_preserves_or_adds_loader_path(self):
+        source = self.root / "fixture.c"
+        source.write_text("int runtime_fixture(void) { return 7; }\n")
+        tools = self.packager.NativeTools("osx-arm64")
+        for existing_loader_path in (True, False):
+            with self.subTest(existing_loader_path=existing_loader_path):
+                library = self.root / f"libfixture-{existing_loader_path}.dylib"
+                command = ["clang", "-arch", "arm64", "-mmacosx-version-min=26.0",
+                           "-dynamiclib", str(source), "-Wl,-rpath,/old/runner/build/lib",
+                           "-o", str(library)]
+                if existing_loader_path:
+                    command.append("-Wl,-rpath,@loader_path")
+                subprocess.run(command, check=True, capture_output=True)
+                for _ in range(2):
+                    tools.rewrite(library, tools.inspect(library), {})
+                    tools.sign(library)
+                    rewritten = tools.inspect(library)
+                    self.assertEqual(rewritten["identity"], "@loader_path/" + library.name)
+                    self.assertEqual(rewritten["rpaths"], ["@loader_path"])
 
     def test_external_dependency_cannot_silently_raise_macos_deployment_requirement(self):
         self.mac_sdk()

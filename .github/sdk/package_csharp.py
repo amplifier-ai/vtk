@@ -71,8 +71,11 @@ class NativeTools:
             if before != after:
                 command.extend(["-change", before, after])
         for rpath in sorted(set(info["rpaths"])):
-            command.extend(["-delete_rpath", rpath])
-        command.extend(["-add_rpath", "@loader_path", str(library)])
+            if rpath != "@loader_path":
+                command.extend(["-delete_rpath", rpath])
+        if "@loader_path" not in info["rpaths"]:
+            command.extend(["-add_rpath", "@loader_path"])
+        command.append(str(library))
         subprocess.run(command, check=True)
 
     @staticmethod
