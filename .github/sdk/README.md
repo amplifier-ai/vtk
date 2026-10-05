@@ -1,55 +1,60 @@
-# Native VTK SDK releases
+# VTK SDK and C# packages from one build
 
-The native SDK is an additional release product for C++ consumers on Windows x64
-and Apple Silicon. The existing C# bindings workflow and runtime archives retain
-their own packaging. This SDK includes the development headers, CMake package,
-shared libraries, import libraries on Windows, and installed diagnostic tools
-from one native build of the Amplifier VTK fork.
+The C# producer workflow builds native VTK once per platform in one `build`
+directory. The same compiled libraries feed both the C# runtime package and the
+Windows x64 or Apple Silicon SDK. The SDK adds installed headers, import libraries,
+CMake exports and diagnostic tools to those native libraries.
 
-The module profile is owned by [`native-sdk.cmake`](native-sdk.cmake). It includes
-the Unity bridge's rendering, volume-rendering and image-I/O module closure,
-including `RenderingExternal` on both platforms. Optional C# and Python bindings,
-Qt, video and VTK XR modules are outside this profile. Windows Unity XR does not
-depend on VTK XR modules in this SDK.
+## Owning configuration
 
-## Build and publication
+[`../workflows/csharp-bindings.yml`](../workflows/csharp-bindings.yml) owns the
+platform module selections, dependencies, compiler cache, C# compilation and
+tests, SDK installation and relocated consumer verification. The shared
+[`native-sdk.cmake`](native-sdk.cmake) profile records ABI and SDK installation
+options; it does not disable bindings or create a second VTK module build.
+`RenderingExternal` is available on both platforms for native bridge consumers.
+Optional modules retain the producer's platform-specific dependency requirements.
+Consumers selecting those modules may also need their external development and
+runtime dependencies; the core/rendering consumer check has a narrower boundary.
 
-[`../workflows/native-sdk.yml`](../workflows/native-sdk.yml) builds and installs
-the native profile on both platforms. macOS targets arm64 and macOS 14.0;
-Windows uses MSVC x64 and the shared CRT. SDK archives are published only after
-the packaging unit tests and both relocated consumer checks succeed.
+`build_installable.py` requests CMake File API metadata before configuration.
+After the C# targets are built, it completes only remaining installed native
+libraries and tools in that same build directory. Already compiled objects are
+reused. It does not select uninstalled C++ test executables or configure another
+VTK tree. `cmake --install` then supplies the SDK package inputs.
 
-The archive names are `vtk-sdk-win-x64.zip` and `vtk-sdk-osx-arm64.tar.gz`.
-Each has a corresponding `.sha256` file. `sdk-manifest.json` inside the archive
-records the source revision/tree, VTK version, ABI options and file digests.
-Internal pull requests publish a distinct SDK prerelease with a unique run tag;
-fork pull requests retain Actions artifacts without publishing a release.
+[`../workflows/native-sdk.yml`](../workflows/native-sdk.yml) is a reusable
+publication workflow. It downloads the verified SDK artifacts from the producer
+run and creates a distinct prerelease. It has no compiler jobs or independent
+VTK configuration. Existing C# runtime artifact names and packaging remain intact.
 
-`package_sdk.py` packages the result of `cmake --install`. It neither regenerates
-development files nor rebuilds published runtime libraries. `verify_sdk.py`
-validates and relocates the archive, removes only the matching original SDK,
-then configures, links and executes [`consumer`](consumer). Its receipt records
-the actual command exits. The consumer checks the version, 64-bit IDs, legacy
-VTK boolean ABI, Sequential SMP backend, required rendering/image APIs and
-Windows Direct3D interoperability class. It does not render or qualify a Unity
-player, GPU driver, headset or clinical workflow.
+## SDK archives and evidence
 
-`run_guarded.py` monitors the owned command's free space and runtime. It stops
-only that command's process tree and retains command receipts in `.sdk-evidence`.
-Release archives contain the installed SDK, excluding the build tree and caches.
+The archives are `vtk-sdk-win-x64.zip` and `vtk-sdk-osx-arm64.tar.gz`, each with a
+`.sha256` file. `sdk-manifest.json` records the source revision/tree, VTK version,
+ABI configuration and file digests. macOS targets arm64 and macOS 14.0; Windows
+uses MSVC x64 and its shared CRT.
 
-The SDK workflow uses a bounded compiler cache for VTK and its bundled native
-dependencies. Cache keys distinguish the platform, native profile, cache version
-and source revision; restore prefixes allow safe reuse across revisions. The
-compiler is checked by content. Ccache still validates compilation inputs and
-options; no sloppiness flags bypass those checks. Evidence includes hit/miss
-counters reset for each build. External vcpkg packages belong to the separate C#
-workflow, rather than this native module profile.
+`package_sdk.py` packages installed files without regenerating development files
+or rebuilding runtime libraries. `verify_sdk.py` validates and relocates the
+archive, removes only the matching original SDK, then configures, links and runs
+[`consumer`](consumer). Verification receipts preserve command exit codes and
+archive/source identities. Both platform and unit checks gate publication.
+
+The consumer checks version, 64-bit IDs, legacy boolean ABI, Sequential SMP,
+required rendering/image APIs and the Windows Direct3D interoperability class.
+It does not render or qualify a Unity player, GPU, headset or clinical workflow.
+
+`run_guarded.py` monitors storage and runtime for owned SDK commands, records
+receipts and stops only their process tree. Compiler caching remains bounded to
+2 GB and preserves standard validation; no sloppiness flags ignore compiler or
+header checks. Statistics are reset and reported verbosely for each build so
+restored lifetime counters cannot be mistaken for current cache effectiveness.
 
 ## Consume an SDK
 
-Verify the published archive checksum, then extract it once into a reusable SDK
-directory. Configure a C++ project using the extracted CMake package:
+Verify the archive checksum and extract once into a reusable directory. A C++
+consumer selects the required VTK components and configures the installed package:
 
 ```shell
 cmake -S consumer -B consumer-build -G Ninja \
@@ -58,16 +63,15 @@ cmake -S consumer -B consumer-build -G Ninja \
 cmake --build consumer-build
 ```
 
-Windows builds require an MSVC x64 environment. Add the SDK `bin` directory to
-the consumer's process-local `PATH` when running it. macOS consumers must select
-arm64 and the supported deployment target. Keep the SDK libraries, headers and
-CMake package together; do not mix them with another VTK build.
+Windows requires an MSVC x64 environment and the SDK `bin` directory on the
+consumer's process-local `PATH`. macOS selects arm64 and deployment target 14.0.
+Keep matching headers, libraries and CMake files together.
 
 ## Unity activation boundary
 
-Publishing an SDK does not change Unity's plugin, packaged libraries or dependency
-pins. Switching those consumers requires Denis's explicit authorization after
-the SDK is ready. Existing runtime inputs remain the reference until that step.
+SDK publication does not change Unity's plugin, packaged libraries or dependency
+pins. Switching these consumers requires Denis's explicit permission after the
+SDK is ready. Existing Unity runtime inputs remain the reference until then.
 
 ## Packaging tests
 
