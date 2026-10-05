@@ -1,0 +1,252 @@
+name: Native SDK
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SDK_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  unit:
+    name: SDK packaging unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SDK_SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run unit tests
+        run: python -m unittest discover -s .github/sdk/tests -v
+
+  sdk:
+    name: Native SDK (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win-x64
+            archive: zip
+          - os: macos-14-xlarge
+            platform: osx-arm64
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SDK_SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: ${{ runner.os == 'Windows' && 'x64' || 'arm64' }}
+
+      - name: Setup MSVC x64
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Check storage reserve and additional peak
+        id: preflight
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --peak-gib 15
+
+      - name: Install matching build tools
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 600 --
+          python -m pip install cmake==4.0.3 ninja==1.11.1.4
+
+      - name: Configure native SDK
+        shell: python
+        run: |
+          import os
+          import subprocess
+          import sys
+
+          command = [
+              sys.executable, '.github/sdk/run_guarded.py',
+              '--path', '.', '--reserve-gib', '20', '--timeout', '900', '--',
+              'cmake', '-S', '.', '-B', 'build', '-G', 'Ninja',
+              '-C', '.github/sdk/native-sdk.cmake',
+              '-DCMAKE_BUILD_TYPE=Release',
+              '-DCMAKE_INSTALL_PREFIX=' + os.path.join(os.getcwd(), 'sdk'),
+              '-DCMAKE_CXX_STANDARD=17', '-DCMAKE_CXX_STANDARD_REQUIRED=ON',
+              '-DBUILD_SHARED_LIBS=ON', '-DVTK_INSTALL_SDK=ON',
+              '-DVTK_ENABLE_WRAPPING=OFF', '-DVTK_WRAP_CSHARP=OFF',
+              '-DVTK_WRAP_PYTHON=OFF', '-DVTK_WRAP_JAVA=OFF',
+              '-DVTK_WRAP_JAVASCRIPT=OFF', '-DVTK_WRAP_SERIALIZATION=OFF',
+          ]
+          if sys.platform == 'darwin':
+              command.extend([
+                  '-DCMAKE_OSX_ARCHITECTURES=arm64',
+                  '-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0',
+                  '-DVTK_USE_COCOA=ON', '-DVTK_USE_X=OFF',
+              ])
+          subprocess.run(command, check=True)
+
+      - name: Build all native installable targets
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 12600 --
+          cmake --build build --config Release --parallel 4
+
+      - name: Install SDK
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 --
+          cmake --install build --config Release --prefix sdk
+
+      - name: Package SDK
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 900 --
+          python .github/sdk/package_sdk.py --sdk sdk --build build --source .
+          --platform ${{ matrix.platform }} --output packages
+
+      - name: Verify relocated consumer
+        id: verification
+        run: |
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 1200 -- \
+            python .github/sdk/verify_sdk.py \
+              --archive packages/vtk-sdk-${{ matrix.platform }}.${{ matrix.archive }} \
+              --consumer .github/sdk/consumer \
+              --work "$RUNNER_TEMP/vtk-sdk-relocated" --original-sdk sdk \
+            2>&1 | tee .sdk-evidence/verification.log
+
+      - name: Preserve consumer verification report
+        if: always() && steps.preflight.outcome != 'skipped'
+        shell: python
+        env:
+          VERIFICATION_OUTCOME: ${{ steps.verification.outcome }}
+        run: |
+          import os
+          from pathlib import Path
+          import shutil
+
+          report = Path(os.environ['RUNNER_TEMP']) / 'vtk-sdk-relocated' / 'verification.json'
+          if report.is_file():
+              shutil.copyfile(report, Path('.sdk-evidence') / 'verification.json')
+          elif os.environ['VERIFICATION_OUTCOME'] == 'success':
+              raise SystemExit('Successful consumer verification did not produce its report')
+
+      - name: Upload verified SDK and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtk-sdk-package-${{ matrix.platform }}
+          path: |
+            packages/vtk-sdk-${{ matrix.platform }}.${{ matrix.archive }}
+            packages/vtk-sdk-${{ matrix.platform }}.${{ matrix.archive }}.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload storage and verification evidence
+        if: always() && steps.preflight.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtk-sdk-evidence-${{ matrix.platform }}
+          path: .sdk-evidence/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
+  prerelease:
+    name: Publish validated SDK prerelease
+    needs: [unit, sdk]
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified SDK packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vtk-sdk-package-*
+          path: packages
+          merge-multiple: true
+
+      - name: Download Windows evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-sdk-evidence-win-x64
+          path: evidence/win-x64
+
+      - name: Download macOS evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-sdk-evidence-osx-arm64
+          path: evidence/osx-arm64
+
+      - name: Validate asset checksums and collect evidence
+        run: |
+          cd packages
+          sha256sum --check vtk-sdk-win-x64.zip.sha256
+          sha256sum --check vtk-sdk-osx-arm64.tar.gz.sha256
+          cd ..
+          for platform in win-x64 osx-arm64; do
+            test -s "evidence/$platform/verification.json"
+            tar -czf "packages/vtk-sdk-evidence-$platform.tar.gz" -C "evidence/$platform" .
+            (cd packages && sha256sum "vtk-sdk-evidence-$platform.tar.gz" \
+              > "vtk-sdk-evidence-$platform.tar.gz.sha256")
+          done
+
+      - name: Create unique prerelease with source revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SDK_PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          tag="vtk-sdk-run-${GITHUB_RUN_ID}-attempt-${GITHUB_RUN_ATTEMPT}"
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq 'length')
+          if [ "$existing" -ne 0 ]; then
+            echo "Refusing to reuse existing SDK tag: $tag" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          repository = os.environ['GITHUB_REPOSITORY']
+          source = os.environ['SDK_SOURCE_SHA']
+          run = os.environ['GITHUB_RUN_ID']
+          attempt = os.environ['GITHUB_RUN_ATTEMPT']
+          Path('release-notes.md').write_text(
+              'Native C++ SDK for win-x64 and osx-arm64.\n\n'
+              f'Source commit: [{source}](https://github.com/{repository}/commit/{source}).\n\n'
+              f'Pull request: {os.environ["SDK_PR_URL"]}.\n\n'
+              f'Workflow run: https://github.com/{repository}/actions/runs/{run}/attempts/{attempt}.\n\n'
+              'Both SDKs passed installation, archive validation, and a consumer build and test '
+              'after relocation and removal of the original install. SHA256 files and verification '
+              'evidence are included.\n',
+              encoding='utf-8',
+          )
+          PY
+          gh release create "$tag" packages/* --repo "$GITHUB_REPOSITORY" \
+            --target "$SDK_SOURCE_SHA" --title "VTK Native SDK $tag" \
+            --notes-file release-notes.md --prerelease
