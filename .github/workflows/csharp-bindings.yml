@@ -286,8 +286,25 @@ jobs:
 
       # ── Test ──
       - name: Run C# tests
+        id: csharp_tests
         working-directory: build
         run: ctest -C Release -R vtkCSharpTests --output-on-failure --no-tests=error --timeout 120
+
+      - name: Preserve CSharp test output
+        if: always() && steps.csharp_tests.outcome != 'skipped'
+        shell: python
+        env:
+          CSHARP_TEST_OUTCOME: ${{ steps.csharp_tests.outcome }}
+        run: |
+          import os
+          from pathlib import Path
+          import shutil
+
+          report = Path('build/Testing/Temporary/LastTest.log')
+          if report.is_file():
+              shutil.copyfile(report, Path('.sdk-evidence') / 'csharp-tests.log')
+          elif os.environ['CSHARP_TEST_OUTCOME'] == 'success':
+              raise SystemExit('Successful CSharp tests did not produce their report')
 
       - name: Install SDK from shared build
         shell: bash
