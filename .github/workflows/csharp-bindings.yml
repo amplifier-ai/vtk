@@ -116,7 +116,7 @@ jobs:
       # ── Caching ──
       - name: Cache ccache
         id: compiler_cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
           key: shared-vtk-ccache-v1-${{ matrix.platform }}-${{ hashFiles('.github/sdk/native-sdk.cmake', '.github/workflows/csharp-bindings.yml') }}-${{ env.CCACHE_VERSION }}-${{ env.SDK_SOURCE_SHA }}
@@ -266,6 +266,7 @@ jobs:
 
       # ── Build ──
       - name: Build
+        id: native_build
         shell: bash
         run: >-
           python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 12600 --
@@ -276,6 +277,13 @@ jobs:
         run: >-
           python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 12600 --
           python .github/sdk/build_installable.py --build build
+
+      - name: Preserve successful compilation cache
+        if: always() && steps.native_build.outcome == 'success' && steps.compiler_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.compiler_cache.outputs.cache-primary-key }}
 
       - name: Print ccache stats
         if: always() && steps.compiler_cache.outcome == 'success'

@@ -50,6 +50,9 @@ receipts and stops only their process tree. Compiler caching remains bounded to
 2 GB and preserves standard validation; no sloppiness flags ignore compiler or
 header checks. Statistics are reset and reported verbosely for each build so
 restored lifetime counters cannot be mistaken for current cache effectiveness.
+The compilation cache is saved after a successful native build, independently
+of subsequent SDK packaging. Packaging failures still fail the job and block
+publication; they do not discard valid cached compiler objects.
 
 ## Consume an SDK
 
