@@ -38,6 +38,14 @@ player, GPU driver, headset or clinical workflow.
 only that command's process tree and retains command receipts in `.sdk-evidence`.
 Release archives contain the installed SDK, excluding the build tree and caches.
 
+The SDK workflow uses a bounded compiler cache for VTK and its bundled native
+dependencies. Cache keys distinguish the platform, native profile, cache version
+and source revision; restore prefixes allow safe reuse across revisions. The
+compiler is checked by content. Ccache still validates compilation inputs and
+options; no sloppiness flags bypass those checks. Evidence includes hit/miss
+counters reset for each build. External vcpkg packages belong to the separate C#
+workflow, rather than this native module profile.
+
 ## Consume an SDK
 
 Verify the published archive checksum, then extract it once into a reusable SDK
