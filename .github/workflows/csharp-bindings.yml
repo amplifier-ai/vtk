@@ -72,6 +72,10 @@ jobs:
           python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 600 --
           python -m pip install cmake==4.0.3 ninja==1.11.1.4
 
+      - name: Run SDK packaging tests with Mach-O tools
+        if: runner.os == 'macOS'
+        run: python -m unittest discover -s .github/sdk/tests -v
+
       - name: Install ccache
         shell: python
         run: |
