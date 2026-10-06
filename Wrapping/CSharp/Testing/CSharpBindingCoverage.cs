@@ -78,7 +78,7 @@ namespace VTK.Test
                         BindingFlags.Instance | BindingFlags.Public,
                         null, Type.EmptyTypes, null);
 
-                    if (defaultCtor == null)
+                    if (type.IsAbstract || defaultCtor == null)
                     {
                         skipped++;
                         continue;
@@ -94,33 +94,46 @@ namespace VTK.Test
                         continue;
                     }
 
+                    vtkObjectBase obj = null;
+                    bool failed = false;
                     try
                     {
-                        var obj = (vtkObjectBase)defaultCtor.Invoke(null);
+                        obj = (vtkObjectBase)defaultCtor.Invoke(null);
                         string className = obj.GetClassName();
 
                         if (string.IsNullOrEmpty(className))
                         {
-                            skipped++;
+                            throw new InvalidOperationException("GetClassName returned an empty class name.");
                         }
-                        else
-                        {
-                            tested++;
-                            obj.Dispose();
-                        }
-                    }
-                    catch (TargetInvocationException)
-                    {
-                        skipped++;
-                    }
-                    catch (DllNotFoundException)
-                    {
-                        skipped++;
                     }
                     catch (Exception ex)
                     {
-                        Console.Error.WriteLine($"  ERROR: {type.Name}: {ex.Message}");
+                        ReportError(type, "constructor/GetClassName", ex);
+                        failed = true;
+                    }
+                    finally
+                    {
+                        if (obj != null)
+                        {
+                            try
+                            {
+                                obj.Dispose();
+                            }
+                            catch (Exception ex)
+                            {
+                                ReportError(type, "Dispose", ex);
+                                failed = true;
+                            }
+                        }
+                    }
+
+                    if (failed)
+                    {
                         errors++;
+                    }
+                    else
+                    {
+                        tested++;
                     }
                 }
 
@@ -146,6 +159,11 @@ namespace VTK.Test
                 Console.Error.WriteLine($"FAIL: {ex}");
                 return 1;
             }
+        }
+
+        private static void ReportError(Type type, string operation, Exception error)
+        {
+            Console.Error.WriteLine($"  ERROR: {type.Name} ({operation}): {error.GetBaseException()}");
         }
     }
 }

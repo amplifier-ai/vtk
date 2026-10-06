@@ -49,6 +49,37 @@ add_custom_target(VTKCSharpTests ALL
   DEPENDS "${_vtk_csharp_test_stamp}")
 add_dependencies(VTKCSharpTests VTKCSharpAssembly)
 
+# Test coverage failure handling without loading the native VTK libraries.
+set(_vtk_csharp_coverage_regression_source
+  "${CMAKE_CURRENT_SOURCE_DIR}/BindingCoverageRegression")
+set(_vtk_csharp_coverage_regression_binary
+  "${CMAKE_CURRENT_BINARY_DIR}/coverage-regression")
+set(_vtk_csharp_coverage_regression_assembly
+  "${_vtk_csharp_coverage_regression_binary}/$<CONFIG>/VTK.CSharp.BindingCoverageRegression.dll")
+add_custom_command(
+  OUTPUT "${_vtk_csharp_coverage_regression_assembly}"
+  DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/CSharpBindingCoverage.cs"
+    "${_vtk_csharp_coverage_regression_source}/BindingCoverageRegression.csproj"
+    "${_vtk_csharp_coverage_regression_source}/Program.cs"
+    "${_vtk_csharp_coverage_regression_source}/StubWrappers.cs"
+  COMMAND "${DOTNET_EXECUTABLE}" build
+    "${_vtk_csharp_coverage_regression_source}/BindingCoverageRegression.csproj"
+    -c $<CONFIG>
+    -p:BaseIntermediateOutputPath=${_vtk_csharp_coverage_regression_binary}/obj/
+    -o "${_vtk_csharp_coverage_regression_binary}/$<CONFIG>"
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  COMMENT "Building C# coverage failure regression"
+  VERBATIM)
+add_custom_target(VTKCSharpBindingCoverageRegression
+  DEPENDS "${_vtk_csharp_coverage_regression_assembly}")
+add_dependencies(VTKCSharpTests VTKCSharpBindingCoverageRegression)
+add_test(
+  NAME "vtkCSharpTests-CSharpBindingCoverageFailureRegression"
+  COMMAND "${DOTNET_EXECUTABLE}" "${_vtk_csharp_coverage_regression_assembly}")
+set_property(TEST "vtkCSharpTests-CSharpBindingCoverageFailureRegression" APPEND
+  PROPERTY REQUIRED_FILES "${_vtk_csharp_coverage_regression_assembly}")
+
 # Set up native library path for tests
 if (WIN32)
   set(_vtk_csharp_native_path "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_CSHARPLIBDIR}")
