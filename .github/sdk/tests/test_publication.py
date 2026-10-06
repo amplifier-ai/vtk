@@ -13,6 +13,21 @@ WORKFLOW = Path(__file__).resolve().parents[2] / "workflows/native-sdk.yml"
 
 
 class NativeSDKPublication(unittest.TestCase):
+    def test_both_publishers_require_platform_builds_and_packaging_unit_success(self):
+        producer = (WORKFLOW.parent / "csharp-bindings.yml").read_text()
+        for name in ("sdk_publication", "release"):
+            with self.subTest(job=name):
+                job = re.search(rf"(?ms)^  {name}:\n(.*?)(?=^  \w+:\n|\Z)", producer)
+                self.assertIsNotNone(job, f"Missing publication job: {name}")
+                dependencies = re.search(r"(?m)^    needs: \[([^]]+)\]$", job.group(1))
+                self.assertIsNotNone(dependencies, f"Missing publication prerequisites: {name}")
+                self.assertEqual({value.strip() for value in dependencies.group(1).split(",")},
+                                 {"build", "sdk_unit"}, f"Incomplete publication prerequisites: {name}")
+                condition = re.search(r"(?m)^    if: (.+)$", job.group(1))
+                self.assertIsNotNone(condition, f"Missing publication condition: {name}")
+                self.assertNotRegex(condition.group(1), r"\b(?:always|failure|cancelled)\s*\(",
+                                    f"Publication must retain the implicit success gate: {name}")
+
     def publish(self, event, ref="refs/heads/master", existing_tag=False):
         source = WORKFLOW.read_text()
         step = re.search(

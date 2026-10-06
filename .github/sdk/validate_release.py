@@ -95,7 +95,10 @@ def validate_release(packages, evidence, source_sha):
         require(isinstance(report, dict), f"SDK verification receipt must be an object: {report_path}")
         for field, expected in (("outcome", "passed"), ("platform", platform),
                                 ("source_revision", source_sha), ("archive_sha256", actual_digest)):
-            require(report.get(field) == expected, f"SDK verification {field} differs from publication: {platform}")
+            actual = report.get(field)
+            require(actual == expected,
+                    f"SDK verification {field} differs from publication: {report_path} [{field}]; "
+                    f"actual={actual!r}; expected={expected!r}")
         require(report.get("original_sdk_removed") is True,
                 f"SDK verification original_sdk_removed must be true: {platform}")
         validate_commands(report.get("commands"))

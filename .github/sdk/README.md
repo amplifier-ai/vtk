@@ -34,6 +34,9 @@ publisher has no compiler jobs or independent VTK configuration. Public C# runti
 asset names remain unchanged; the archives now come from installed, relocated
 libraries and include their non-system dependency closure.
 
+Both release jobs require successful platform builds and the shared `sdk_unit`
+job. A failed or skipped unit prerequisite blocks native SDK and C# publication.
+
 Download PR candidates from the producer run's Artifacts section:
 
 ```shell
@@ -76,6 +79,16 @@ restored lifetime counters cannot be mistaken for current cache effectiveness.
 The compilation cache is saved after a successful native build, independently
 of subsequent SDK packaging. Packaging failures still fail the job and block
 publication; they do not discard valid cached compiler objects.
+
+`build_with_retry.py` streams native build output and retains per-attempt command,
+exit code and failed-command receipts in SDK evidence. On Windows, it permits one
+incremental retry per build command only when every Ninja failure is a DLL/executable link command
+reporting exactly `Access is denied.` without another diagnostic. Both native build
+entry points use the same helper inside the unchanged storage/time guard. The
+retry preserves command arguments, working directory, environment and targets;
+permanent access failures and ordinary compilation/linker errors still fail CI.
+This is a bounded mitigation for transient link-command access denials. A recovered
+attempt does not identify the denied process or establish its underlying cause.
 
 Cache lookup prefers the exact build profile, then the shared cache for the same
 platform, before legacy caches. Publication-only workflow edits can change the
