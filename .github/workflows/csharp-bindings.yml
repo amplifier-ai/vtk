@@ -76,6 +76,10 @@ jobs:
         if: runner.os == 'macOS'
         run: python -m unittest discover -s .github/sdk/tests -v
 
+      - name: Test native build recovery (Windows)
+        if: runner.os == 'Windows'
+        run: python -m unittest discover -s .github/sdk/tests -p test_build_retry.py -v
+
       - name: Install ccache
         shell: python
         run: |
@@ -264,6 +268,7 @@ jobs:
         shell: bash
         run: >-
           python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 12600 --
+          python .github/sdk/build_with_retry.py --evidence .sdk-evidence --
           cmake --build build --config Release --target VTKCSharpAssembly VTKCSharpTests
 
       - name: Complete remaining SDK installable targets

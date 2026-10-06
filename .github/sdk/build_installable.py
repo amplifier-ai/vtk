@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 
 def prepare(build):
@@ -49,7 +50,9 @@ def main():
         return
     targets = installed_targets(build)
     print(f"Complete {len(targets)} installed targets in the existing build directory", flush=True)
-    subprocess.run(["cmake", "--build", str(build), "--config", "Release", "--parallel", "4",
+    subprocess.run([sys.executable, str(Path(__file__).with_name("build_with_retry.py")),
+                    "--evidence", str(build.parent / ".sdk-evidence"), "--",
+                    "cmake", "--build", str(build), "--config", "Release", "--parallel", "4",
                     "--target", *targets], check=True)
 
 
