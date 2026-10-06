@@ -59,6 +59,20 @@ def consumer_environment(environment, original_build, package, work):
     return result
 
 
+def validate_manifest_contract(manifest, manifest_path, platform, minimum_macos, expected_source):
+    require(manifest["platform"] == platform,
+            f"C# package platform differs from verifier: {manifest_path} [platform]; "
+            f"actual={manifest['platform']!r}; expected={platform!r}")
+    if platform == "osx-arm64":
+        require(macos_version(manifest["minimum_macos"]) == macos_version(minimum_macos),
+                f"Packaged C# minimum macOS differs from verification contract: {manifest_path} [minimum_macos]; "
+                f"actual={manifest['minimum_macos']!r}; expected={minimum_macos!r}")
+    if expected_source:
+        require(manifest["source_revision"] == expected_source,
+                f"C# package source differs from workflow source: {manifest_path} [source_revision]; "
+                f"actual={manifest['source_revision']!r}; expected={expected_source!r}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("package", "consumer", "build", "work"):
@@ -77,13 +91,9 @@ def main():
     package = work / "runtime"
     extract_sdk(archive, package)
     manifest = validate_runtime_manifest(package)
-    require(manifest["platform"] == args.platform, "C# package platform differs from verifier")
-    if args.platform == "osx-arm64":
-        require(macos_version(manifest["minimum_macos"]) == macos_version(args.minimum_macos),
-                "Packaged C# minimum macOS differs from verification contract")
     expected_source = os.environ.get("SDK_SOURCE_SHA")
-    if expected_source:
-        require(manifest["source_revision"] == expected_source, "C# package source differs from workflow source")
+    validate_manifest_contract(manifest, package / "runtime-manifest.json",
+                               args.platform, args.minimum_macos, expected_source)
     project = work / "consumer"
     shutil.copytree(consumer, project)
     environment = consumer_environment(os.environ, original, package, work)

@@ -121,10 +121,15 @@ def runtime_inventory(package):
 
 
 def validate_runtime_manifest(package):
-    manifest = json.loads((package / "runtime-manifest.json").read_text())
+    path = package / "runtime-manifest.json"
+    manifest = json.loads(path.read_text())
     require(runtime_inventory(package) == manifest["files"], "C# runtime inventory differs from manifest")
-    require(manifest["vtk_version"] == "9.7.1", "Unexpected C# runtime VTK version")
-    require(bool(re.fullmatch(r"[0-9a-f]{40}", manifest["source_revision"])), "Invalid C# source revision")
+    require(manifest["vtk_version"] == "9.7.1",
+            f"Unexpected C# runtime VTK version: {path} [vtk_version]; "
+            f"actual={manifest['vtk_version']!r}; expected={'9.7.1'!r}")
+    require(bool(re.fullmatch(r"[0-9a-f]{40}", manifest["source_revision"])),
+            f"Invalid C# source revision: {path} [source_revision]; "
+            f"actual={manifest['source_revision']!r}; expected={'40 lowercase hexadecimal characters'!r}")
     return manifest
 
 
@@ -138,13 +143,18 @@ def validate_native_runtime(package, platform, tools=None, system_directory=None
             continue
         info = tools.inspect(library)
         if platform == "osx-arm64":
-            minimum = macos_version(info.get("minimum_macos", "26.0"))
+            observed_minimum = info.get("minimum_macos", "26.0")
+            minimum = macos_version(observed_minimum)
             require(minimum <= macos_version(minimum_macos),
-                    f"Native runtime requires newer macOS than {minimum_macos}: {library.name}")
-            require(info["identity"] == "@loader_path/" + library.name,
-                    f"Non-portable native identity: {library.name}")
+                    f"Native runtime requires newer macOS than {minimum_macos}: {library} [minimum_macos]; "
+                    f"actual={observed_minimum!r}; expected<={minimum_macos!r}")
+            expected_identity = "@loader_path/" + library.name
+            require(info["identity"] == expected_identity,
+                    f"Non-portable native identity: {library} [identity]; "
+                    f"actual={info['identity']!r}; expected={expected_identity!r}")
             require(all(rpath == "@loader_path" for rpath in info["rpaths"]),
-                    f"Non-portable native rpath: {library.name}")
+                    f"Non-portable native rpath: {library} [rpaths]; "
+                    f"actual={info['rpaths']!r}; expected=each entry equal to {'@loader_path'!r}")
         for dependency in info["dependencies"]:
             if system_dependency(dependency, platform, system_directory):
                 continue
@@ -325,12 +335,20 @@ def copy_licenses(output, source, dependencies, dependency_directories):
 def package_csharp(sdk, build, output, platform, dependency_directories=(), tools=None,
                    system_directory=None, redist_directories=None, minimum_macos="26.0"):
     sdk, build, output = (Path(path).resolve() for path in (sdk, build, output))
-    require(platform in ("win-x64", "osx-arm64"), "Unsupported C# runtime platform")
+    require(platform in ("win-x64", "osx-arm64"),
+            f"Unsupported C# runtime platform [platform]; actual={platform!r}; "
+            f"expected one of {('win-x64', 'osx-arm64')!r}")
     macos_version(minimum_macos)
     require(not output.exists(), "C# runtime output must be new")
     require(not output.is_relative_to(sdk) and not sdk.is_relative_to(output), "SDK and runtime must be separate")
-    identity = json.loads((sdk / "sdk-manifest.json").read_text())
-    require(identity["platform"] == platform and identity["vtk_version"] == "9.7.1", "SDK identity mismatch")
+    manifest_path = sdk / "sdk-manifest.json"
+    identity = json.loads(manifest_path.read_text())
+    require(identity["platform"] == platform,
+            f"SDK identity mismatch: {manifest_path} [platform]; "
+            f"actual={identity['platform']!r}; expected={platform!r}")
+    require(identity["vtk_version"] == "9.7.1",
+            f"SDK identity mismatch: {manifest_path} [vtk_version]; "
+            f"actual={identity['vtk_version']!r}; expected={'9.7.1'!r}")
     managed = sdk / "lib/csharp/VTK.CSharp.dll"
     require(managed.is_file(), "Installed managed C# assembly is missing")
     values = cache_values(build)

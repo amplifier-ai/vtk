@@ -78,6 +78,80 @@ class CSharpRuntime(unittest.TestCase):
         return self.packager.package_csharp(
             self.sdk, self.build, self.output, platform, tools=self.tools, **kwargs)
 
+    def assert_diagnostic(self, operation, path, field, actual, expected):
+        with self.assertRaises(RuntimeError) as failure:
+            operation()
+        message = str(failure.exception)
+        for component in (str(path), field, repr(actual), repr(expected)):
+            self.assertIn(component, message)
+
+    def test_sdk_identity_diagnostics_show_field_path_actual_and_expected(self):
+        path = self.sdk / "sdk-manifest.json"
+        original = json.loads(path.read_text())
+        for field, actual, expected in (("platform", "win-x64", "osx-arm64"),
+                                        ("vtk_version", "9.7.0", "9.7.1")):
+            with self.subTest(field=field):
+                path.write_text(json.dumps({**original, field: actual}))
+                self.assert_diagnostic(self.package, path, field, actual, expected)
+
+    def test_unsupported_platform_diagnostic_shows_actual_and_supported_values(self):
+        with self.assertRaises(RuntimeError) as failure:
+            self.package("linux-x64")
+        message = str(failure.exception)
+        for component in ("platform", repr("linux-x64"), repr("win-x64"), repr("osx-arm64")):
+            self.assertIn(component, message)
+
+    def test_runtime_manifest_diagnostics_show_field_path_actual_and_expected(self):
+        self.mac_sdk()
+        self.package()
+        path = self.output / "runtime-manifest.json"
+        original = json.loads(path.read_text())
+        for field, actual, expected in (("vtk_version", "9.7.0", "9.7.1"),
+                                        ("source_revision", "a" * 39,
+                                         "40 lowercase hexadecimal characters")):
+            with self.subTest(field=field):
+                path.write_text(json.dumps({**original, field: actual}))
+                self.assert_diagnostic(lambda: self.packager.validate_runtime_manifest(self.output),
+                                       path, field, actual, expected)
+
+    def test_native_comparison_diagnostics_show_field_path_actual_and_expected(self):
+        self.mac_sdk()
+        self.package()
+        library = self.output / "native/libvtkCommonCoreCSharp.dylib"
+        original = self.tools.inspect(library)
+        for field, actual, expected in (("minimum_macos", "27.0", "26.0"),
+                                        ("identity", "@rpath/" + library.name,
+                                         "@loader_path/" + library.name),
+                                        ("rpaths", [str(self.build / "lib")], "@loader_path")):
+            with self.subTest(field=field):
+                library.write_text(json.dumps({**original, field: actual}))
+                self.assert_diagnostic(
+                    lambda: self.packager.validate_native_runtime(self.output, "osx-arm64", tools=self.tools),
+                    library, field, actual, expected)
+
+    def test_verifier_manifest_diagnostics_show_field_path_actual_and_expected(self):
+        manifest = {"platform": "osx-arm64", "minimum_macos": "26.0", "source_revision": "a" * 40}
+        path = self.output / "runtime-manifest.json"
+        for field, actual, expected in (("platform", "win-x64", "osx-arm64"),
+                                        ("minimum_macos", "27.0", "26.0"),
+                                        ("source_revision", "b" * 40, "a" * 40)):
+            with self.subTest(field=field):
+                self.assert_diagnostic(
+                    lambda: self.verifier.validate_manifest_contract(
+                        {**manifest, field: actual}, path, "osx-arm64", "26.0", "a" * 40),
+                    path, field, actual, expected)
+
+    def test_verifier_manifest_contract_preserves_normalization_and_optional_source(self):
+        path = self.output / "runtime-manifest.json"
+        for platform, minimum, expected_source in (("osx-arm64", "26.0", "a" * 40),
+                                                   ("osx-arm64", "26.0.0", None),
+                                                   ("win-x64", None, "a" * 40),
+                                                   ("win-x64", None, "")):
+            with self.subTest(platform=platform, minimum=minimum, source=expected_source):
+                self.verifier.validate_manifest_contract(
+                    {"platform": platform, "minimum_macos": minimum, "source_revision": "a" * 40},
+                    path, platform, "26.0", expected_source)
+
     def test_packaged_archive_keeps_relative_aliases_and_rewrites_build_rpaths(self):
         self.mac_sdk()
         original = (self.sdk / "lib/csharp/libvtkCommonCoreCSharp.dylib").read_bytes()
