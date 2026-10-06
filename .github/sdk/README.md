@@ -34,6 +34,9 @@ publisher has no compiler jobs or independent VTK configuration. Public C# runti
 asset names remain unchanged; the archives now come from installed, relocated
 libraries and include their non-system dependency closure.
 
+Both release jobs require successful platform builds and the shared `sdk_unit`
+job. A failed or skipped unit prerequisite blocks native SDK and C# publication.
+
 Download PR candidates from the producer run's Artifacts section:
 
 ```shell

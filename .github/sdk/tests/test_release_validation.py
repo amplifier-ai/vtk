@@ -74,6 +74,22 @@ class ReleaseValidation(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, field):
                     self.validate()
 
+    def test_report_mismatch_diagnostics_show_receipt_field_actual_and_expected(self):
+        original = copy.deepcopy(self.reports["win-x64"])
+        path = self.evidence / "win-x64/verification.json"
+        for field, actual, expected in (("outcome", "failed", "passed"),
+                                        ("source_revision", "b" * 40, SOURCE),
+                                        ("platform", "osx-arm64", "win-x64"),
+                                        ("archive_sha256", "0" * 64, self.digests["win-x64"])):
+            with self.subTest(field=field):
+                self.reports["win-x64"] = {**original, field: actual}
+                self.write_report()
+                with self.assertRaises(RuntimeError) as failure:
+                    self.validate()
+                message = str(failure.exception)
+                for component in (str(path), field, repr(actual), repr(expected)):
+                    self.assertIn(component, message)
+
     def test_rejects_archive_bytes_changed_after_consumer_verification(self):
         (self.packages / ARCHIVES["win-x64"]).write_bytes(b"Different bytes")
         with self.assertRaisesRegex(RuntimeError, "checksum"):

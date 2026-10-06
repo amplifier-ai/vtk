@@ -457,7 +457,7 @@ jobs:
   # After successful build on master, create a stable release.
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: build
+    needs: [build, sdk_unit]
     runs-on: ubuntu-latest
     name: Create release
     permissions:
