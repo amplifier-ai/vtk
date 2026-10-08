@@ -182,6 +182,12 @@ SDK inputs in Unity.
 
 ## Packaging tests
 
+Keep each Windows test step to one external command, or check `$LASTEXITCODE`
+after every invocation. PowerShell can otherwise hide an earlier Python failure
+behind a later successful command. The native symbol fixture accepts both path
+separators in `compile_commands.json` while still requiring Release optimization,
+debug information and matching binary/debug identities.
+
 ```shell
 python -m unittest discover -s .github/sdk/tests -v
 ```

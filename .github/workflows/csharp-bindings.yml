@@ -182,8 +182,7 @@ jobs:
         if: runner.os == 'Windows'
         env:
           SENTRY_CLI: ${{ steps.sentry_cli.outputs.path }}
-        run: |
-          python -m unittest discover -s .github/sdk/tests -p test_symbol_profile.py -v
+        run: python -m unittest discover -s .github/sdk/tests -p test_symbol_profile.py -v
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'

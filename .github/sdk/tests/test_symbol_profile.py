@@ -71,7 +71,7 @@ class NativeSymbolProfile(unittest.TestCase):
     def test_release_keeps_optimization_and_full_compile_debug_information(self):
         self.assertEqual(self.cache["CMAKE_BUILD_TYPE"], "Release")
         commands = json.loads((self.build / "compile_commands.json").read_text())
-        self.assertTrue(any(row["file"].endswith("generated/wrapper.cxx") for row in commands))
+        self.assertTrue(any(row["file"].replace("\\", "/").endswith("generated/wrapper.cxx") for row in commands))
         self.assertTrue(any(row["file"].endswith("owned.c") for row in commands))
         for row in commands:
             command = row.get("command", " ".join(row.get("arguments", [])))
@@ -83,6 +83,15 @@ class NativeSymbolProfile(unittest.TestCase):
                 else:
                     for flag in ("-O3", "-DNDEBUG", "-g", "-mmacosx-version-min=26.0"):
                         self.assertIn(flag, command.split())
+
+    def test_release_validation_accepts_both_compile_command_path_separators(self):
+        commands = json.loads((self.build / "compile_commands.json").read_text())
+        for separator in ("/", "\\"):
+            records = [{**row, "file": row["file"].replace("\\", "/").replace("/", separator)}
+                       for row in commands]
+            with self.subTest(separator=separator), \
+                    mock.patch.object(Path, "read_text", return_value=json.dumps(records)):
+                self.test_release_keeps_optimization_and_full_compile_debug_information()
 
     def test_installed_target_graph_covers_native_wrappers_and_embedded_dependencies(self):
         spec = importlib.util.spec_from_file_location("symbol_fixture_installable", SDK / "build_installable.py")
