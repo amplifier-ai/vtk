@@ -9,3 +9,18 @@ set(VTK_USE_FUTURE_BOOL OFF CACHE BOOL "Native SDK ABI")
 set(VTK_USE_FUTURE_CONST OFF CACHE BOOL "Native SDK ABI")
 set(VTK_DEBUG_LEAKS OFF CACHE BOOL "Native SDK ABI")
 set(VTK_SMP_IMPLEMENTATION_TYPE Sequential CACHE STRING "Native SDK backend")
+
+# Keep Release optimization while producing debug files from the shipped build.
+if(CMAKE_HOST_WIN32)
+  set(CMAKE_POLICY_DEFAULT_CMP0141 NEW CACHE STRING "Use the MSVC debug format abstraction")
+  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded CACHE STRING "Embed debug information for ccache")
+  set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/native-pdb" CACHE PATH "Native linker debug files")
+  foreach(kind EXE SHARED MODULE)
+    set(CMAKE_${kind}_LINKER_FLAGS_RELEASE_INIT "/DEBUG:FULL /OPT:REF /OPT:ICF"
+      CACHE STRING "Native Release linker debug files")
+  endforeach()
+elseif(CMAKE_HOST_APPLE)
+  foreach(language C CXX)
+    set(CMAKE_${language}_FLAGS_RELEASE_INIT "-g" CACHE STRING "Native Release debug information")
+  endforeach()
+endif()

@@ -7,6 +7,10 @@ on:
         description: Source commit used to build the SDK artifacts in the calling run
         required: true
         type: string
+    secrets:
+      SENTRY_AUTH_TOKEN:
+        description: Token for the native unity-plugin project's VTK Sentry releases and PDB/dSYM files
+        required: true
 
 permissions:
   contents: write
@@ -23,7 +27,7 @@ jobs:
     name: Publish validated SDK
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
@@ -52,6 +56,25 @@ jobs:
           name: vtk-sdk-evidence-osx-arm64
           path: evidence/osx-arm64
 
+      - name: Download Windows native symbols
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-sentry-win-x64
+          path: symbols/win-x64
+
+      - name: Download macOS native symbols
+        uses: actions/download-artifact@v4
+        with:
+          name: vtk-sentry-osx-arm64
+          path: symbols/osx-arm64
+
+      - name: Download matching CSharp archive identities
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vtk-csharp-*
+          path: runtime-packages
+          merge-multiple: true
+
       - name: Validate asset checksums and collect evidence
         run: |
           python .github/sdk/validate_release.py \
@@ -62,6 +85,33 @@ jobs:
             (cd packages && sha256sum "vtk-sdk-evidence-$platform.tar.gz" \
               > "vtk-sdk-evidence-$platform.tar.gz.sha256")
           done
+
+      - name: Install verified Sentry publisher CLI
+        id: sentry_cli
+        run: >-
+          python .github/sdk/install_sentry_cli.py
+          --directory "$RUNNER_TEMP/vtk-sentry-cli" --platform linux-x64
+
+      - name: Publish VTK Sentry release and PDB/dSYM files
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_CLI: ${{ steps.sentry_cli.outputs.path }}
+        run: >-
+          python .github/sdk/publish_sentry.py
+          --roots symbols/win-x64 symbols/osx-arm64 --source-sha "$SDK_SOURCE_SHA"
+          --packages packages --runtime-packages runtime-packages
+          --release "vtk-sdk@9.7.1+$SDK_SOURCE_SHA.run-$GITHUB_RUN_ID"
+          --sentry-cli "$SENTRY_CLI" --receipt packages/vtk-sentry-publication.json
+
+      - name: Preserve Sentry publication receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtk-sentry-publication-receipt
+          path: |
+            packages/vtk-sentry-publication.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Create unique release with source revision
         env:

@@ -35,7 +35,9 @@ asset names remain unchanged; the archives now come from installed, relocated
 libraries and include their non-system dependency closure.
 
 Both release jobs require successful platform builds and the shared `sdk_unit`
-job. A failed or skipped unit prerequisite blocks native SDK and C# publication.
+job. Native SDK publication also uploads and verifies Sentry debug files before
+creating a release. C# release creation depends on that publication job. A failed
+or skipped prerequisite blocks both releases.
 
 Download PR candidates from the producer run's Artifacts section:
 
@@ -146,7 +148,45 @@ SDK publication does not change Unity's plugin, packaged libraries or dependency
 pins. Switching these consumers requires Denis's explicit permission after the
 SDK is ready. Existing Unity runtime inputs remain the reference until then.
 
+## Native Sentry releases and debug files
+
+`native-sdk.cmake` generates PDB/dSYM information from the existing optimized
+Release build. MSVC uses `/Z7` and full linker PDBs; Apple Clang uses `-g`.
+The ABI, module selection and optimization stay unchanged.
+
+`sentry_symbols.py` stages matching PDB/dSYM files for native modules shipped
+in the SDK and C# runtime, including native wrappers and bundled VTK dependencies.
+It checks binary/debug IDs, architecture and package hashes. Mac dSYMs are
+created before relocation tests remove build inputs. External supplier modules
+are recorded separately; missing supplier symbols are not fabricated.
+
+PRs prepare symbols offline. The master-only publisher creates a VTK Sentry
+release with the exact `amplifier-ai/vtk` commit, uploads PDB/dSYM files to
+`amplifier-ai/unity-plugin`, waits for processing, finalizes the release and records the upload readback.
+SDK and C# releases retain their existing build and package qualification gates.
+No source bundles are collected and no synthetic events are sent.
+
+GitHub is already connected to Sentry. Configure code mappings in that integration
+for project `unity-plugin`, repository `amplifier-ai/vtk`, source root empty:
+
+| Producer | Stack trace root | Default branch |
+| --- | --- | --- |
+| Windows | `D:/a/vtk/vtk/` | `master` |
+| macOS | `/Users/runner/work/vtk/vtk/` | `master` |
+
+Sentry's project setting **Enable SCM Source Context** fetches tracked source
+from GitHub. Generated build files have no repository counterpart. Mapping
+settings are maintained in Sentry, not changed by CI. VR owns plugin symbols
+and its application release separately. Publishing VTK does not activate new
+SDK inputs in Unity.
+
 ## Packaging tests
+
+Keep each Windows test step to one external command, or check `$LASTEXITCODE`
+after every invocation. PowerShell can otherwise hide an earlier Python failure
+behind a later successful command. Native debug-file checks run against the
+actual packaged VTK libraries through `sentry_symbols.py`; there is no separate
+native symbol fixture build.
 
 ```shell
 python -m unittest discover -s .github/sdk/tests -v

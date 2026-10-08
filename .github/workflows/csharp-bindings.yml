@@ -72,6 +72,13 @@ jobs:
           python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 600 --
           python -m pip install cmake==4.0.3 ninja==1.11.1.4
 
+      - name: Install verified Sentry CLI for offline symbol checks
+        id: sentry_cli
+        shell: bash
+        run: >-
+          python .github/sdk/install_sentry_cli.py
+          --directory "$RUNNER_TEMP/vtk-sentry-cli" --platform ${{ matrix.platform }}
+
       - name: Run SDK packaging tests with Mach-O tools
         if: runner.os == 'macOS'
         run: python -m unittest discover -s .github/sdk/tests -v
@@ -347,6 +354,16 @@ jobs:
               command.extend(['--minimum-macos', '26.0'])
           subprocess.run(command, check=True)
 
+      - name: Prepare matching PDB and dSYM files
+        shell: bash
+        env:
+          SENTRY_CLI: ${{ steps.sentry_cli.outputs.path }}
+        run: >-
+          python .github/sdk/run_guarded.py --path . --reserve-gib 20 --timeout 1800 --
+          python .github/sdk/sentry_symbols.py prepare --sdk sdk --runtime artifacts
+          --build build --source . --output .sdk-sentry --packages packages
+          --platform ${{ matrix.platform }} --sentry-cli "$SENTRY_CLI"
+
       - name: Verify relocated SDK consumer
         id: verification
         shell: bash
@@ -429,6 +446,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Upload verified native debug files
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtk-sentry-${{ matrix.platform }}
+          path: .sdk-sentry/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
   sdk_unit:
     name: SDK packaging unit tests
     runs-on: ubuntu-latest
@@ -457,12 +483,14 @@ jobs:
     uses: ./.github/workflows/native-sdk.yml
     with:
       source_sha: ${{ github.sha }}
+    secrets:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
   # ── Release (master) ──
   # After successful build on master, create a stable release.
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: [build, sdk_unit]
+    needs: [build, sdk_unit, sdk_publication]
     runs-on: ubuntu-latest
     name: Create release
     permissions:

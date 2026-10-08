@@ -13,6 +13,17 @@ WORKFLOW = Path(__file__).resolve().parents[2] / "workflows/native-sdk.yml"
 
 
 class NativeSDKPublication(unittest.TestCase):
+    def test_pr_preparation_is_offline_and_precedes_removal_of_native_inputs(self):
+        producer = (WORKFLOW.parent / "csharp-bindings.yml").read_text()
+        build = producer.split("\n  sdk_unit:", 1)[0]
+        self.assertNotIn("SENTRY_AUTH_TOKEN", build)
+        self.assertLess(build.index("Prepare matching PDB and dSYM files"), build.index("Verify relocated SDK consumer"))
+        self.assertLess(build.index("Verify relocated CSharp archive"), build.index("Upload verified native debug files"))
+        publisher = WORKFLOW.read_text()
+        self.assertIn("if: github.event_name == 'push' && github.ref == 'refs/heads/master'", publisher)
+        self.assertLess(publisher.index("Validate asset checksums"), publisher.index("Publish VTK Sentry release"))
+        self.assertLess(publisher.index("Publish VTK Sentry release"), publisher.index("Create unique release"))
+
     def test_both_publishers_require_platform_builds_and_packaging_unit_success(self):
         producer = (WORKFLOW.parent / "csharp-bindings.yml").read_text()
         for name in ("sdk_publication", "release"):
@@ -22,7 +33,8 @@ class NativeSDKPublication(unittest.TestCase):
                 dependencies = re.search(r"(?m)^    needs: \[([^]]+)\]$", job.group(1))
                 self.assertIsNotNone(dependencies, f"Missing publication prerequisites: {name}")
                 self.assertEqual({value.strip() for value in dependencies.group(1).split(",")},
-                                 {"build", "sdk_unit"}, f"Incomplete publication prerequisites: {name}")
+                                 {"build", "sdk_unit"} | ({"sdk_publication"} if name == "release" else set()),
+                                 f"Incomplete publication prerequisites: {name}")
                 condition = re.search(r"(?m)^    if: (.+)$", job.group(1))
                 self.assertIsNotNone(condition, f"Missing publication condition: {name}")
                 self.assertNotRegex(condition.group(1), r"\b(?:always|failure|cancelled)\s*\(",

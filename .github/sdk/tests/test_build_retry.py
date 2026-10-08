@@ -97,6 +97,25 @@ class NativeBuildRetry(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(calls), 2)
 
+    def test_observed_windows_link_sharing_violation_gets_one_incremental_retry(self):
+        output = DENIAL.replace('bin/vtkIONetCDF-9.7.dll lib/vtkIONetCDF-9.7.lib',
+                                'lib/csharp/vtkViewsInfovisCSharp.dll lib/vtkViewsInfovisCSharp.lib')
+        output = output.replace('Access is denied.',
+                                'The process cannot access the file because it is being used by another process.')
+        result, calls, receipts = self.run_build([
+            {"output": output, "code": 1}, {"output": "Build completed", "code": 0}])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], calls[1])
+        self.assertEqual([item['exit_code'] for item in receipts], [1, 0])
+
+    def test_bare_file_lock_is_not_retried(self):
+        result, calls, _ = self.run_build([{
+            "output": 'The process cannot access the file because it is being used by another process.',
+            "code": 1}])
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(len(calls), 1)
+
     def test_compile_errors_fail_without_retry(self):
         result, calls, receipts = self.run_build([{"output": COMPILE_ERROR, "code": 27}])
         self.assertEqual(result.returncode, 27)
