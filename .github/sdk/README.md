@@ -175,6 +175,12 @@ manifest records identities, source coverage, compiler settings and package
 digests. Individual compiler/runtime-generated assembly files without a supported
 source-language extension are outside the source-context coverage boundary.
 
+`IO/Import/mtlsyntax.inl` keeps the checked-in generated MTL parser's code and
+tables. Obsolete Ragel `#line` directives are removed so compiler debug records
+name that materialized source and its physical lines, rather than nonexistent
+historical `vtk3` files or `NONE`. The source-context regression guards that
+boundary; parser regeneration is outside this publication workflow.
+
 The CLI installer pins Sentry CLI 3.8.0 and verifies its platform asset SHA256
 before execution. PRs perform only offline preparation/checks and retain native
 debug/source artifacts for seven days. `.sdk-sentry/` and `*.src.zip` are temporary

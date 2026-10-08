@@ -10,7 +10,6 @@
 
 #include "vtkStringScanner.h"
 
-#line 1 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
 // This is a ragel file for generating a parser for MTL files
 // Note that some MTL files are whitespace sensitive
 // Mainly with unquoted string names with spaces
@@ -23,11 +22,9 @@
 // map_Kd my texture file.png
 //
 
-#line 83 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
 
 
 
-#line 20 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.c"
 static const char _simple_lexer_actions[] = {
   0, 1, 0, 1, 1, 1, 3, 1,
   4, 1, 8, 1, 9, 1, 10, 1,
@@ -109,7 +106,6 @@ static const int simple_lexer_error = -1;
 static const int simple_lexer_en_main = 2;
 
 
-#line 86 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
 
 int parseMTL(
   const char *start,
@@ -128,7 +124,6 @@ int parseMTL(
   std::string currentNum;
 
 
-#line 121 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.c"
   {
   cs = simple_lexer_start;
   ts = nullptr;
@@ -136,9 +131,7 @@ int parseMTL(
   act = 0;
   }
 
-#line 104 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
 
-#line 131 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.c"
   {
   int _klen;
   unsigned int _trans;
@@ -154,10 +147,8 @@ _resume:
   while ( _nacts-- > 0 ) {
     switch ( *_acts++ ) {
   case 4:
-#line 1 "NONE"
   {ts = p;}
   break;
-#line 150 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.c"
     }
   }
 
@@ -224,35 +215,27 @@ _eof_trans:
     switch ( *_acts++ )
     {
   case 0:
-#line 20 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   { recentString += *p;  }
   break;
   case 1:
-#line 33 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   { recentSpace += *p;  }
   break;
   case 2:
-#line 46 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   { currentNum += *p;  }
   break;
   case 5:
-#line 1 "NONE"
   {te = p+1;}
   break;
   case 6:
-#line 48 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   {act = 2;}
   break;
   case 7:
-#line 22 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   {act = 3;}
   break;
   case 8:
-#line 62 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   {te = p+1;{ currentNum.clear(); recentString.clear(); recentSpace.clear(); }}
   break;
   case 9:
-#line 72 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   {te = p+1;{
       Token tok;
       tok.Type = Token::LineEnd;
@@ -261,7 +244,6 @@ _eof_trans:
     }}
   break;
   case 10:
-#line 48 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   {te = p;p--;{
     currentNum += '\0';
     Token tok;
@@ -275,7 +257,6 @@ _eof_trans:
   }}
   break;
   case 11:
-#line 22 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   {te = p;p--;{
     Token tok;
     tok.StringValue = recentString;
@@ -287,7 +268,6 @@ _eof_trans:
   }}
   break;
   case 12:
-#line 35 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   {te = p;p--;{
     Token tok;
     tok.StringValue = recentSpace;
@@ -299,11 +279,9 @@ _eof_trans:
   }}
   break;
   case 13:
-#line 79 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   {te = p;p--;{ std::string value = "Error unknown text: "; value += std::string(ts, te-ts); std::cerr << value << "\n"; }}
   break;
   case 14:
-#line 22 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
   {{p = ((te))-1;}{
     Token tok;
     tok.StringValue = recentString;
@@ -315,7 +293,6 @@ _eof_trans:
   }}
   break;
   case 15:
-#line 1 "NONE"
   {  switch( act ) {
   case 2:
   {{p = ((te))-1;}
@@ -344,7 +321,6 @@ _eof_trans:
   }
   }
   break;
-#line 337 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.c"
     }
   }
 
@@ -354,10 +330,8 @@ _again:
   while ( _nacts-- > 0 ) {
     switch ( *_acts++ ) {
   case 3:
-#line 1 "NONE"
   {ts = nullptr;}
   break;
-#line 350 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.c"
     }
   }
 
@@ -374,7 +348,6 @@ _again:
 
   }
 
-#line 105 "..\\vtk3\\vtk\\io\\import\\mtlsyntax.rl"
 
   return res;
 }
