@@ -104,6 +104,27 @@ class SymbolContracts(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Frozen source"):
             self.module.verify_frozen_sources(changed, coverage, "a" * 40)
 
+    def test_generated_cpp_include_fragments_have_verified_bytes_and_no_fictitious_git_url(self):
+        fragment = self.build / "vtkAffineImplicitBackendInstantiate_char.cxx.inc"
+        fragment.write_text("template class Backend<char>;\n")
+        path = self.bundle([(fragment, fragment.read_bytes())])
+        coverage = self.module.verify_sources(path, self.source, self.build, ID)
+        self.assertEqual(coverage[0]["kind"], "generated")
+        self.module.add_source_urls(path, self.source, self.build, "a" * 40)
+        self.module.verify_frozen_sources(path, coverage, "a" * 40)
+        self.assertNotIn("url", next(iter(self.module.read_bundle(path)["files"].values())))
+        fragment.write_text("changed generated instantiation\n")
+        with self.assertRaisesRegex(RuntimeError, "source bytes"):
+            self.module.verify_sources(path, self.source, self.build, ID)
+
+    def test_referenced_cpp_include_fragment_is_required_even_when_other_source_is_present(self):
+        fragment = self.build / "vtkAffineImplicitBackendInstantiate_char.cxx.inc"
+        fragment.write_text("template class Backend<char>;\n")
+        path = self.bundle([(self.source / "file.cxx", (self.source / "file.cxx").read_bytes())])
+        listing = f"macho {ID} references sources:\n  {fragment}\n    Available.\n"
+        with self.assertRaisesRegex(RuntimeError, "Referenced VTK source missing"):
+            self.module.verify_referenced_sources(path, listing, self.source, self.build)
+
 
 if __name__ == "__main__":
     unittest.main()

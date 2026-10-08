@@ -1,5 +1,6 @@
 extern "C" int owned_c(void);
 extern "C" int owned_cxx(void);
+#include "fragment.cxx.inc"
 extern "C" int generated_wrapper(void)
 {
   return owned_c() + owned_cxx();

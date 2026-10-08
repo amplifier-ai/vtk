@@ -20,6 +20,11 @@ REPOSITORY = "amplifier-ai/vtk"
 SOURCE_EXTENSIONS = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".txx", ".inl", ".m", ".mm"}
 
 
+def supported_source(path):
+    # Common/Core generates C++ instantiation fragments included by bulk sources.
+    return path.suffix.lower() in SOURCE_EXTENSIONS or path.name.lower().endswith(".cxx.inc")
+
+
 def cli_run(cli, arguments, environment=None):
     result = subprocess.run([str(cli), *map(str, arguments)], capture_output=True, text=True,
                             encoding="utf-8", errors="replace", env=environment)
@@ -84,7 +89,7 @@ def verify_sources(bundle, source, build, debug_id):
             if location is None:
                 continue
             kind, relative, original = location
-            require(original.suffix.lower() in SOURCE_EXTENSIONS and original.is_file(),
+            require(supported_source(original) and original.is_file(),
                     f"Missing or unsupported VTK source: {relative}")
             contents = archive.read(entry)
             require(hashlib.sha256(contents).hexdigest() == digest(original),
@@ -100,7 +105,7 @@ def verify_referenced_sources(bundle, listing, source, build):
     included = {normalized(row.get("path", "")) for row in files.values()}
     for original in re.findall(r"^  (\S.*)$", listing, re.MULTILINE):
         location = source_location(original, source, build)
-        if location and Path(location[1]).suffix.lower() in SOURCE_EXTENSIONS:
+        if location and supported_source(Path(location[1])):
             require(normalized(original) in included, f"Referenced VTK source missing from bundle: {location[1]}")
 
 

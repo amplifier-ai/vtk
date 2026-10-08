@@ -1,0 +1,4 @@
+extern "C" int generated_fragment(int value)
+{
+  return value * 3;
+}

@@ -165,8 +165,10 @@ missing supplier debug information or claim their source-level coverage.
 
 Source bundles are generated on the original builder, before relocation tests
 remove or hide its inputs. Referenced VTK source and generated files must appear
-with their exact bytes. Tracked source links use the immutable VTK commit;
-generated files are embedded without a fictitious GitHub path. The frozen
+with their exact bytes. Common/Core's generated `.cxx.inc` template instantiation
+fragments are C++ source inputs and follow the same required coverage and byte
+checks. Tracked source links use the immutable VTK commit; generated files are
+embedded without a fictitious GitHub path. The frozen
 manifest records identities, source coverage, compiler settings and package
 digests. Individual compiler/runtime-generated assembly files without a supported
 source-language extension are outside the source-context coverage boundary.
