@@ -12,3 +12,7 @@ __pycache__/
 
 # Exclude macOS .DS_Store files.
 .DS_Store
+
+# Native debug/source staging is temporary build output, never repository content.
+.sdk-sentry/
+*.src.zip
