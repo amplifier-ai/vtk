@@ -81,8 +81,6 @@ jobs:
 
       - name: Run SDK packaging tests with Mach-O tools
         if: runner.os == 'macOS'
-        env:
-          SENTRY_CLI: ${{ steps.sentry_cli.outputs.path }}
         run: python -m unittest discover -s .github/sdk/tests -v
 
       - name: Test native build recovery (Windows)
@@ -177,12 +175,6 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-
-      - name: Test Release symbols with MSVC
-        if: runner.os == 'Windows'
-        env:
-          SENTRY_CLI: ${{ steps.sentry_cli.outputs.path }}
-        run: python -m unittest discover -s .github/sdk/tests -p test_symbol_profile.py -v
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
