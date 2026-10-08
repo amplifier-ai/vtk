@@ -164,6 +164,13 @@ PRs prepare symbols offline. The master-only publisher creates a VTK Sentry
 release with the exact `amplifier-ai/vtk` commit, uploads PDB/dSYM files to
 `amplifier-ai/unity-plugin`, waits for processing, finalizes the release and records the upload readback.
 SDK and C# releases retain their existing build and package qualification gates.
+API failure diagnostics identify the method, endpoint and transport or JSON error;
+credentials and response bodies are not logged. CLI failures retain both streams.
+Before uploading, the publisher verifies existing server files by debug ID,
+architecture, format, SHA1, size and features, then uploads only missing files.
+A fresh strict readback of every expected file precedes release finalization.
+This keeps reruns idempotent; Sentry CLI 3.8.0 returns only newly assembled IDs
+for `--require-all`, even when requested files already exist on the server.
 No source bundles are collected and no synthetic events are sent.
 
 GitHub is already connected to Sentry. Configure code mappings in that integration

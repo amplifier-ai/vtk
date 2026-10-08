@@ -45,15 +45,21 @@ def api_request(method, path, token, body=None, allow_missing=False):
     encoded = json.dumps(body).encode("utf-8") if body is not None else None
     request = Request(API_ORIGIN + path, data=encoded, method=method,
                       headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+    label = f"Sentry API {method} {path}".replace(token, "[REDACTED]") if token else f"Sentry API {method} {path}"
     try:
         with build_opener(NoRedirect()).open(request, timeout=30) as response:
             return json.load(response), next_page(response.headers.get("Link", ""))
     except HTTPError as error:
         if error.code == 404 and allow_missing:
             return None, None
-        raise RuntimeError(f"Sentry API {method} failed (HTTP {error.code})") from None
-    except (URLError, OSError, ValueError):
-        raise RuntimeError("Sentry API request failed") from None
+        raise RuntimeError(f"{label} failed (HTTP {error.code})") from None
+    except (URLError, OSError, ValueError) as error:
+        reason = error.reason if isinstance(error, URLError) else error
+        detail = f"{type(reason).__name__}: {reason}"
+        if token:
+            detail = detail.replace(token, "[REDACTED]")
+        category = "invalid JSON response" if isinstance(error, ValueError) else "transport failure"
+        raise RuntimeError(f"{label}: {category} ({detail[:400]})") from None
 
 
 def api_list(path, token):
@@ -73,8 +79,10 @@ def run_cli(cli, arguments, token):
     environment.pop("SENTRY_LOG_FILE", None)
     result = subprocess.run([str(cli), "--url", "https://sentry.io", *map(str, arguments)],
                             capture_output=True, text=True, encoding="utf-8", errors="replace", env=environment)
-    diagnostic = (result.stderr or result.stdout).replace(token, "[REDACTED]") if token else result.stderr
-    require(result.returncode == 0, f"Sentry CLI failed (exit {result.returncode}): {diagnostic[-1500:]}")
+    stderr = result.stderr.replace(token, "[REDACTED]") if token else result.stderr
+    stdout = result.stdout.replace(token, "[REDACTED]") if token else result.stdout
+    diagnostic = "stderr:\n" + stderr[-1500:] + "\nstdout:\n" + stdout[-1500:]
+    require(result.returncode == 0, f"Sentry CLI failed (exit {result.returncode}): {diagnostic}")
     return result.stdout
 
 
@@ -161,7 +169,7 @@ def verify_release(token, path, release, revision, finalized=False):
             "Sentry did not confirm the exact VTK commit")
 
 
-def verify_uploads(token, files):
+def verify_uploads(token, files, required=True):
     confirmed = []
     for debug_id in sorted({item["debug_id"] for item in files.values()}):
         path = f"projects/{ORGANIZATION}/{PROJECT}/files/dsyms/?" + urlencode({"debug_id": debug_id, "per_page": 100})
@@ -172,8 +180,10 @@ def verify_uploads(token, files):
                        and row.get("symbolType") == expected["type"]
                        and row.get("sha1") == expected["sha1"] and row.get("size") == expected["size"]
                        and set(expected["features"]) <= set((row.get("data") or {}).get("features", []))]
-            require(matches, f"Sentry did not confirm processed {expected['role']} bytes for {debug_id}")
-            confirmed.append({**expected, "id": str(matches[0]["id"])})
+            if matches:
+                confirmed.append({**expected, "id": str(matches[0]["id"])})
+            elif required:
+                raise RuntimeError(f"Sentry did not confirm processed {expected['role']} bytes for {debug_id}")
     return confirmed
 
 
@@ -221,10 +231,15 @@ def publish(roots, revision, release, receipt, cli, packages, runtime_packages):
     if method:
         api_request(method, collection if method == "POST" else release_path, token, body)
     verify_release(token, release_path, release, revision)
-    arguments = ["debug-files", "upload", "--org", ORGANIZATION, "--project", PROJECT, "--wait", "--require-all"]
-    for debug_id in sorted({item["debug_id"] for item in files.values()}):
-        arguments.extend(["--id", debug_id])
-    run_cli(cli, [*arguments, *sorted(map(str, files))], token)
+    existing_files = verify_uploads(token, files, required=False)
+    identity = lambda row: (row["debug_id"], row["arch"], row["type"], row["sha1"], row["size"])
+    existing_identities = {identity(row) for row in existing_files}
+    pending = {path: row for path, row in files.items() if identity(row) not in existing_identities}
+    if pending:
+        arguments = ["debug-files", "upload", "--org", ORGANIZATION, "--project", PROJECT, "--wait", "--require-all"]
+        for debug_id in sorted({item["debug_id"] for item in pending.values()}):
+            arguments.extend(["--id", debug_id])
+        run_cli(cli, [*arguments, *sorted(map(str, pending))], token)
     confirmed = verify_uploads(token, files)
     run_cli(cli, ["releases", "finalize", "--org", ORGANIZATION, "--project", PROJECT, release], token)
     verify_release(token, release_path, release, revision, finalized=True)

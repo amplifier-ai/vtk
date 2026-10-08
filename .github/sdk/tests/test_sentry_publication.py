@@ -1,11 +1,13 @@
 import copy
 import importlib.util
 import json
+import io
 import os
 from pathlib import Path
 import sys
 import tempfile
 from types import SimpleNamespace
+from urllib.error import HTTPError, URLError
 import unittest
 from unittest.mock import patch
 
@@ -147,6 +149,35 @@ class PublicationContracts(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'full VTK'):
             self.module.publish(self.roots, 'abcdef', RELEASE, self.receipt, 'cli', self.packages, self.runtime)
 
+    def test_api_timeout_identifies_method_endpoint_and_reason(self):
+        opener = SimpleNamespace(open=unittest.mock.Mock(side_effect=URLError(TimeoutError('timed out'))))
+        with patch.object(self.module, 'build_opener', return_value=opener):
+            with self.assertRaises(RuntimeError) as failure:
+                self.module.api_request('GET', 'release/commits/', TOKEN)
+        self.assertIn('GET release/commits/', str(failure.exception))
+        self.assertIn('TimeoutError', str(failure.exception))
+
+    def test_api_http_error_identifies_endpoint_without_response_body(self):
+        error = HTTPError('https://sentry.io/api/0/release/', 403, 'Forbidden', {}, None)
+        opener = SimpleNamespace(open=unittest.mock.Mock(side_effect=error))
+        with patch.object(self.module, 'build_opener', return_value=opener):
+            with self.assertRaises(RuntimeError) as failure:
+                self.module.api_request('POST', 'release/', TOKEN)
+        self.assertIn('POST release/', str(failure.exception))
+        self.assertIn('403', str(failure.exception))
+
+    def test_api_invalid_json_is_distinguished_and_transport_secrets_are_redacted(self):
+        opener = SimpleNamespace(open=unittest.mock.Mock(return_value=io.BytesIO(b'')))
+        with patch.object(self.module, 'build_opener', return_value=opener):
+            with self.assertRaisesRegex(RuntimeError, 'GET release/.*JSON'):
+                self.module.api_request('GET', 'release/', TOKEN)
+        opener.open.side_effect = URLError(OSError('connection reset ' + TOKEN))
+        with patch.object(self.module, 'build_opener', return_value=opener):
+            with self.assertRaises(RuntimeError) as failure:
+                self.module.api_request('GET', 'release/', TOKEN)
+        self.assertNotIn(TOKEN, str(failure.exception))
+        self.assertIn('connection reset', str(failure.exception))
+
     def test_provider_collections_are_fully_paginated_and_cannot_loop(self):
         with patch.object(self.module, 'api_request', side_effect=[([{'id': 1}], 'page-two'), ([{'id': 2}], None)]):
             self.assertEqual(self.module.api_list('page-one', TOKEN), [{'id': 1}, {'id': 2}])
@@ -168,7 +199,17 @@ class PublicationContracts(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs['env']['SENTRY_AUTH_TOKEN'], TOKEN)
             self.assertEqual(command[1:3], ['--url', 'https://sentry.io'])
 
-    def test_success_publishes_exact_release_and_only_debug_files(self):
+    def test_cli_failure_retains_missing_ids_from_stdout_and_redacts_both_streams(self):
+        failure = SimpleNamespace(returncode=1, stderr='Some symbols missing ' + TOKEN,
+                                  stdout='missing-debug-id ' + TOKEN)
+        with patch.object(self.module.subprocess, 'run', return_value=failure):
+            with self.assertRaises(RuntimeError) as result:
+                self.module.run_cli('cli', ['debug-files', 'upload'], TOKEN)
+        self.assertIn('Some symbols missing', str(result.exception))
+        self.assertIn('missing-debug-id', str(result.exception))
+        self.assertNotIn(TOKEN, str(result.exception))
+
+    def test_repeat_publication_verifies_existing_files_without_reupload(self):
         remote_release = None
         calls = []
         def request(method, path, token, body=None, allow_missing=False):
@@ -187,16 +228,33 @@ class PublicationContracts(unittest.TestCase):
             result = self.call_publish()
         self.assertEqual(verify.call_count, 2)
         self.assertFalse(any('code-mappings' in call[1] for call in calls))
-        upload = cli.call_args_list[-2].args[1]
+        self.assertFalse(any(call.args[1][:2] == ['debug-files', 'upload'] for call in cli.call_args_list))
         self.assertEqual(cli.call_args_list[-1].args[1], ["releases", "finalize", "--org", "amplifier-ai", "--project", "unity-plugin", RELEASE])
-        self.assertIn('--wait', upload)
-        self.assertIn('--require-all', upload)
-        self.assertNotIn('--include-sources', upload)
-        self.assertEqual([upload[i+1] for i, word in enumerate(upload) if word == '--id'], IDS)
-        self.assertEqual(set(upload[-2:]), set(map(str, self.files)))
         stored = self.receipt.read_text()
         self.assertNotIn(TOKEN, stored)
         self.assertEqual(json.loads(stored)['outcome'], 'passed')
+        self.assertEqual(len(result['files']), 2)
+
+    def test_missing_files_upload_keeps_require_all_and_exact_ids(self):
+        uploaded = False
+        def command(cli, arguments, token):
+            nonlocal uploaded
+            if arguments[:2] == ['debug-files', 'upload']:
+                uploaded = True
+            return 'sentry-cli 3.8.0'
+        def listing(path, token):
+            if 'commits/' in path:
+                return self.provider_commits()
+            return self.provider_files() if uploaded else self.provider_files()[:1]
+        with patch.object(self.module, 'verify', side_effect=self.manifests), \
+                patch.object(self.module, 'run_cli', side_effect=command) as cli, \
+                patch.object(self.module, 'api_request', return_value=(self.provider_release(), None)), \
+                patch.object(self.module, 'api_list', side_effect=listing):
+            result = self.call_publish()
+        upload = next(call.args[1] for call in cli.call_args_list if call.args[1][:2] == ['debug-files', 'upload'])
+        self.assertIn('--wait', upload)
+        self.assertIn('--require-all', upload)
+        self.assertEqual([upload[i+1] for i, word in enumerate(upload) if word == '--id'], IDS[1:])
         self.assertEqual(len(result['files']), 2)
 
     def test_missing_readback_preserves_existing_receipt(self):
