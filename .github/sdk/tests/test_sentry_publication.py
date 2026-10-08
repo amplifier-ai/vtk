@@ -1,11 +1,13 @@
 import copy
 import importlib.util
 import json
+import io
 import os
 from pathlib import Path
 import sys
 import tempfile
 from types import SimpleNamespace
+from urllib.error import HTTPError, URLError
 import unittest
 from unittest.mock import patch
 
@@ -146,6 +148,35 @@ class PublicationContracts(unittest.TestCase):
             request.assert_not_called()
         with self.assertRaisesRegex(RuntimeError, 'full VTK'):
             self.module.publish(self.roots, 'abcdef', RELEASE, self.receipt, 'cli', self.packages, self.runtime)
+
+    def test_api_timeout_identifies_method_endpoint_and_reason(self):
+        opener = SimpleNamespace(open=unittest.mock.Mock(side_effect=URLError(TimeoutError('timed out'))))
+        with patch.object(self.module, 'build_opener', return_value=opener):
+            with self.assertRaises(RuntimeError) as failure:
+                self.module.api_request('GET', 'release/commits/', TOKEN)
+        self.assertIn('GET release/commits/', str(failure.exception))
+        self.assertIn('TimeoutError', str(failure.exception))
+
+    def test_api_http_error_identifies_endpoint_without_response_body(self):
+        error = HTTPError('https://sentry.io/api/0/release/', 403, 'Forbidden', {}, None)
+        opener = SimpleNamespace(open=unittest.mock.Mock(side_effect=error))
+        with patch.object(self.module, 'build_opener', return_value=opener):
+            with self.assertRaises(RuntimeError) as failure:
+                self.module.api_request('POST', 'release/', TOKEN)
+        self.assertIn('POST release/', str(failure.exception))
+        self.assertIn('403', str(failure.exception))
+
+    def test_api_invalid_json_is_distinguished_and_transport_secrets_are_redacted(self):
+        opener = SimpleNamespace(open=unittest.mock.Mock(return_value=io.BytesIO(b'')))
+        with patch.object(self.module, 'build_opener', return_value=opener):
+            with self.assertRaisesRegex(RuntimeError, 'GET release/.*JSON'):
+                self.module.api_request('GET', 'release/', TOKEN)
+        opener.open.side_effect = URLError(OSError('connection reset ' + TOKEN))
+        with patch.object(self.module, 'build_opener', return_value=opener):
+            with self.assertRaises(RuntimeError) as failure:
+                self.module.api_request('GET', 'release/', TOKEN)
+        self.assertNotIn(TOKEN, str(failure.exception))
+        self.assertIn('connection reset', str(failure.exception))
 
     def test_provider_collections_are_fully_paginated_and_cannot_loop(self):
         with patch.object(self.module, 'api_request', side_effect=[([{'id': 1}], 'page-two'), ([{'id': 2}], None)]):

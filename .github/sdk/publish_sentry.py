@@ -45,15 +45,21 @@ def api_request(method, path, token, body=None, allow_missing=False):
     encoded = json.dumps(body).encode("utf-8") if body is not None else None
     request = Request(API_ORIGIN + path, data=encoded, method=method,
                       headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+    label = f"Sentry API {method} {path}".replace(token, "[REDACTED]") if token else f"Sentry API {method} {path}"
     try:
         with build_opener(NoRedirect()).open(request, timeout=30) as response:
             return json.load(response), next_page(response.headers.get("Link", ""))
     except HTTPError as error:
         if error.code == 404 and allow_missing:
             return None, None
-        raise RuntimeError(f"Sentry API {method} failed (HTTP {error.code})") from None
-    except (URLError, OSError, ValueError):
-        raise RuntimeError("Sentry API request failed") from None
+        raise RuntimeError(f"{label} failed (HTTP {error.code})") from None
+    except (URLError, OSError, ValueError) as error:
+        reason = error.reason if isinstance(error, URLError) else error
+        detail = f"{type(reason).__name__}: {reason}"
+        if token:
+            detail = detail.replace(token, "[REDACTED]")
+        category = "invalid JSON response" if isinstance(error, ValueError) else "transport failure"
+        raise RuntimeError(f"{label}: {category} ({detail[:400]})") from None
 
 
 def api_list(path, token):
