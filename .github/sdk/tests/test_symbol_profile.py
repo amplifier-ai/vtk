@@ -17,8 +17,8 @@ SENTRY_CLI = os.environ.get("SENTRY_CLI") or shutil.which("sentry-cli")
 SUPPORTED = sys.platform in ("win32", "darwin")
 COMPILER = shutil.which("cl" if sys.platform == "win32" else "clang++")
 NATIVE_SOURCES = {
-    "owned": ("owned.c", "owned.cxx"),
-    "wrapper": ("wrapper.cxx", "fragment.cxx.inc", "Core"),
+    "owned": ("owned.c", "owned.cxx", "html5ent.inc", "iso8859x.inc"),
+    "wrapper": ("wrapper.cxx", "fragment.cxx.inc", "Core", "template.tpp", "octree"),
     "helper": ("helper.cxx",),
     "vendor": ("vendor.c",),
     "installed_tool": ("tool.c",),
@@ -180,6 +180,12 @@ class NativeSymbolProfile(unittest.TestCase):
                             for module in manifest['modules'] for row in module['source_coverage']))
         self.assertTrue(any(row['kind'] == 'tracked' and row['path'] == 'ThirdParty/eigen/vtkeigen/eigen/Core'
                             for module in manifest['modules'] for row in module['source_coverage']))
+        self.assertTrue(any(row['kind'] == 'tracked' and row['path'] == 'template.tpp'
+                            for module in manifest['modules'] for row in module['source_coverage']))
+        for path in ('ThirdParty/libxml2/vtklibxml2/html5ent.inc',
+                     'ThirdParty/libxml2/vtklibxml2/iso8859x.inc', 'Utilities/octree/octree/octree'):
+            self.assertTrue(any(row['kind'] == 'tracked' and row['path'] == path
+                                for module in manifest['modules'] for row in module['source_coverage']))
         self.assertEqual(manifest, collector.verify(self.root / "symbols", revision, SENTRY_CLI))
 
 

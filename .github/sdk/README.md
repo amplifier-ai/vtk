@@ -167,8 +167,12 @@ Source bundles are generated on the original builder, before relocation tests
 remove or hide its inputs. Referenced VTK source and generated files must appear
 with their exact bytes. Common/Core's generated `.cxx.inc` template instantiation
 fragments are C++ source inputs and follow the same required coverage and byte
-checks. Vendored Eigen's extensionless module headers, such as `Core` and `Dense`,
-are required source files under its tracked include directory. Tracked source
+checks. Xdmf's compiled `.tpp` template definitions are required headers too.
+Vendored Eigen's extensionless module headers, such as `Core` and `Dense`,
+are required source files under its tracked include directory. The tracked
+octree facade and libxml2's two compiled C include fragments follow those same
+checks; arbitrary extensionless files and NASM fragments are not exempted.
+Tracked source
 links use the immutable VTK commit; generated files are
 embedded without a fictitious GitHub path. The frozen
 manifest records identities, source coverage, compiler settings and package

@@ -147,6 +147,35 @@ class SymbolContracts(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Referenced VTK source missing"):
             self.module.verify_referenced_sources(path, f"macho {ID} references sources:\n  {header}\n", self.source, self.build)
 
+    def test_compiled_tpp_template_keeps_exact_bytes_and_is_required_in_the_bundle(self):
+        template = self.source / "XdmfArray.tpp"
+        template.write_text("template <class T> T get(T value) { return value; }\n")
+        path = self.bundle([(template, template.read_bytes())])
+        coverage = self.module.verify_sources(path, self.source, self.build, ID)
+        self.module.add_source_urls(path, self.source, self.build, "a" * 40)
+        self.module.verify_frozen_sources(path, coverage, "a" * 40)
+        self.assertEqual(coverage[0]["path"], "XdmfArray.tpp")
+        listing = f"macho {ID} references sources:\n  {template}\n"
+        self.module.verify_referenced_sources(path, listing, self.source, self.build)
+        missing = self.bundle([(self.source / "file.cxx", (self.source / "file.cxx").read_bytes())])
+        with self.assertRaisesRegex(RuntimeError, "Referenced VTK source missing"):
+            self.module.verify_referenced_sources(missing, listing, self.source, self.build)
+
+    def test_other_compiled_header_families_do_not_exempt_assembly_or_arbitrary_files(self):
+        for relative in ("Utilities/octree/octree/octree", "ThirdParty/libxml2/vtklibxml2/html5ent.inc",
+                         "ThirdParty/libxml2/vtklibxml2/iso8859x.inc"):
+            with self.subTest(path=relative):
+                original = self.source / relative
+                original.parent.mkdir(parents=True, exist_ok=True)
+                original.write_text("int header_function(int value) { return value + 1; }\n")
+                bundle = self.bundle([(original, original.read_bytes())])
+                self.assertTrue(self.module.verify_sources(bundle, self.source, self.build, ID))
+                missing = self.bundle([(self.source / "file.cxx", (self.source / "file.cxx").read_bytes())])
+                with self.assertRaisesRegex(RuntimeError, "Referenced VTK source missing"):
+                    self.module.verify_referenced_sources(missing, f"macho {ID} references sources:\n  {original}\n", self.source, self.build)
+        for relative in ("ThirdParty/jpeg/vtkjpeg/simd/nasm/jcolsamp.inc", "data/File.inc", "Core", "secret.json"):
+            self.assertFalse(self.module.supported_source(Path(relative)))
+
 
 if __name__ == "__main__":
     unittest.main()

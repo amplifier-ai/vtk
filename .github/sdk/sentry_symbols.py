@@ -17,14 +17,16 @@ from package_sdk import cache_values, digest, inventory, require, safe_name, val
 from package_csharp import validate_runtime_manifest
 
 REPOSITORY = "amplifier-ai/vtk"
-SOURCE_EXTENSIONS = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".txx", ".inl", ".m", ".mm"}
+SOURCE_EXTENSIONS = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".txx", ".tpp", ".inl", ".m", ".mm"}
 
 
 def supported_source(path):
     # Common/Core generates C++ instantiation fragments included by bulk sources.
     # Vendored Eigen also uses extensionless C++ module headers (Core, Dense, etc.).
     return (path.suffix.lower() in SOURCE_EXTENSIONS or path.name.lower().endswith(".cxx.inc")
-            or not path.suffix and path.parent.as_posix() == "ThirdParty/eigen/vtkeigen/eigen")
+            or not path.suffix and path.parent.as_posix() == "ThirdParty/eigen/vtkeigen/eigen"
+            or path.as_posix() in {"Utilities/octree/octree/octree",
+                "ThirdParty/libxml2/vtklibxml2/html5ent.inc", "ThirdParty/libxml2/vtklibxml2/iso8859x.inc"})
 
 
 def cli_run(cli, arguments, environment=None):

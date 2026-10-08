@@ -1,0 +1,4 @@
+extern "C" int octree_include_source(int value)
+{
+  return value * 17;
+}
