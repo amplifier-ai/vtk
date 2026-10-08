@@ -18,7 +18,7 @@ SUPPORTED = sys.platform in ("win32", "darwin")
 COMPILER = shutil.which("cl" if sys.platform == "win32" else "clang++")
 NATIVE_SOURCES = {
     "owned": ("owned.c", "owned.cxx"),
-    "wrapper": ("wrapper.cxx", "fragment.cxx.inc"),
+    "wrapper": ("wrapper.cxx", "fragment.cxx.inc", "Core"),
     "helper": ("helper.cxx",),
     "vendor": ("vendor.c",),
     "installed_tool": ("tool.c",),
@@ -177,6 +177,8 @@ class NativeSymbolProfile(unittest.TestCase):
         self.assertTrue(any(row['kind'] == 'generated' for module in manifest['modules']
                             for row in module['source_coverage']))
         self.assertTrue(any(row['kind'] == 'generated' and row['path'].endswith('fragment.cxx.inc')
+                            for module in manifest['modules'] for row in module['source_coverage']))
+        self.assertTrue(any(row['kind'] == 'tracked' and row['path'] == 'ThirdParty/eigen/vtkeigen/eigen/Core'
                             for module in manifest['modules'] for row in module['source_coverage']))
         self.assertEqual(manifest, collector.verify(self.root / "symbols", revision, SENTRY_CLI))
 

@@ -22,7 +22,9 @@ SOURCE_EXTENSIONS = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", "
 
 def supported_source(path):
     # Common/Core generates C++ instantiation fragments included by bulk sources.
-    return path.suffix.lower() in SOURCE_EXTENSIONS or path.name.lower().endswith(".cxx.inc")
+    # Vendored Eigen also uses extensionless C++ module headers (Core, Dense, etc.).
+    return (path.suffix.lower() in SOURCE_EXTENSIONS or path.name.lower().endswith(".cxx.inc")
+            or not path.suffix and path.parent.as_posix() == "ThirdParty/eigen/vtkeigen/eigen")
 
 
 def cli_run(cli, arguments, environment=None):
@@ -89,7 +91,7 @@ def verify_sources(bundle, source, build, debug_id):
             if location is None:
                 continue
             kind, relative, original = location
-            require(supported_source(original) and original.is_file(),
+            require(supported_source(Path(relative)) and original.is_file(),
                     f"Missing or unsupported VTK source: {relative}")
             contents = archive.read(entry)
             require(hashlib.sha256(contents).hexdigest() == digest(original),

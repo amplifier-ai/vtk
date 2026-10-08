@@ -125,6 +125,28 @@ class SymbolContracts(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Referenced VTK source missing"):
             self.module.verify_referenced_sources(path, listing, self.source, self.build)
 
+    def test_eigen_extensionless_headers_keep_exact_bytes_and_immutable_source_urls(self):
+        header = self.source / "ThirdParty/eigen/vtkeigen/eigen/Core"
+        header.parent.mkdir(parents=True)
+        header.write_text("template <class T> struct Matrix { T value; };\n")
+        path = self.bundle([(header, header.read_bytes())])
+        coverage = self.module.verify_sources(path, self.source, self.build, ID)
+        self.assertEqual(coverage[0]["kind"], "tracked")
+        self.module.add_source_urls(path, self.source, self.build, "a" * 40)
+        self.module.verify_frozen_sources(path, coverage, "a" * 40)
+        self.assertTrue(next(iter(self.module.read_bundle(path)["files"].values()))["url"].endswith("/eigen/Core"))
+        header.write_text("changed header\n")
+        with self.assertRaisesRegex(RuntimeError, "source bytes"):
+            self.module.verify_sources(path, self.source, self.build, ID)
+
+    def test_referenced_eigen_extensionless_header_cannot_silently_disappear(self):
+        header = self.source / "ThirdParty/eigen/vtkeigen/eigen/Core"
+        header.parent.mkdir(parents=True)
+        header.write_text("template <class T> struct Matrix {};\n")
+        path = self.bundle([(self.source / "file.cxx", (self.source / "file.cxx").read_bytes())])
+        with self.assertRaisesRegex(RuntimeError, "Referenced VTK source missing"):
+            self.module.verify_referenced_sources(path, f"macho {ID} references sources:\n  {header}\n", self.source, self.build)
+
 
 if __name__ == "__main__":
     unittest.main()

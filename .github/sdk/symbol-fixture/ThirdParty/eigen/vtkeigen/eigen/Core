@@ -1,0 +1,4 @@
+extern "C" int extensionless_header(int value)
+{
+  return value * 5;
+}
