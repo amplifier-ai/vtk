@@ -17,12 +17,12 @@ class NativeSDKPublication(unittest.TestCase):
         producer = (WORKFLOW.parent / "csharp-bindings.yml").read_text()
         build = producer.split("\n  sdk_unit:", 1)[0]
         self.assertNotIn("SENTRY_AUTH_TOKEN", build)
-        self.assertLess(build.index("Freeze matching native symbols"), build.index("Verify relocated SDK consumer"))
+        self.assertLess(build.index("Prepare matching PDB and dSYM files"), build.index("Verify relocated SDK consumer"))
         self.assertLess(build.index("Verify relocated CSharp archive"), build.index("Upload verified native debug files"))
         publisher = WORKFLOW.read_text()
         self.assertIn("if: github.event_name == 'push' && github.ref == 'refs/heads/master'", publisher)
-        self.assertLess(publisher.index("Validate asset checksums"), publisher.index("Publish and verify VTK native"))
-        self.assertLess(publisher.index("Publish and verify VTK native"), publisher.index("Create unique release"))
+        self.assertLess(publisher.index("Validate asset checksums"), publisher.index("Publish VTK Sentry release"))
+        self.assertLess(publisher.index("Publish VTK Sentry release"), publisher.index("Create unique release"))
 
     def test_both_publishers_require_platform_builds_and_packaging_unit_success(self):
         producer = (WORKFLOW.parent / "csharp-bindings.yml").read_text()

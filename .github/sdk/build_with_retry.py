@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recover one Windows link-command access denial without changing build inputs."""
+"""Recover one Windows link access denial or file lock without changing inputs."""
 import argparse
 import json
 from pathlib import Path
@@ -26,7 +26,8 @@ class Failures:
         elif self.current and text:
             if self.current["command"] is None:
                 self.current["command"] = text
-            elif text == "Access is denied.":
+            elif text in ("Access is denied.",
+                          "The process cannot access the file because it is being used by another process."):
                 self.current["denied"] = True
             elif not text.startswith("ninja: build stopped:"):
                 self.current["other_output"] = True
@@ -76,7 +77,7 @@ def run_build(command, evidence):
         if not retry:
             return exit_code if exit_code is not None else 1
         print("Retrying the identical native build once after a Windows link-command "
-              "access denial; the first failed attempt is retained in SDK evidence.", flush=True)
+              "access denial or file lock; the first failure is retained in SDK evidence.", flush=True)
         time.sleep(2)
 
 

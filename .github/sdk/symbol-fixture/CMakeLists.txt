@@ -12,7 +12,6 @@ add_library(fixture_static STATIC static.c)
 add_subdirectory(third-party)
 
 configure_file(wrapper.cxx.in generated/wrapper.cxx @ONLY)
-configure_file(fragment.cxx.inc.in generated/fragment.cxx.inc @ONLY)
 add_library(wrapper SHARED "${CMAKE_CURRENT_BINARY_DIR}/generated/wrapper.cxx")
 add_library(helper SHARED helper.cxx)
 target_link_libraries(wrapper PRIVATE owned)

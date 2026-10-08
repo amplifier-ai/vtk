@@ -39,8 +39,6 @@ def main():
     if sys.platform == "darwin":
         env["DYLD_LIBRARY_PATH"] = str(sdk / "lib")
     build = work / "consumer-build"
-    probe = build / "native-frame.json"
-    env["VTK_SENTRY_PROBE_REPORT"] = str(probe)
     commands = [
         ["cmake", "-S", str(consumer), "-B", str(build), "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
          f"-DVTK_DIR={sdk / 'lib/cmake/vtk-9.7'}", "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
@@ -59,19 +57,6 @@ def main():
             child = subprocess.run(command, env=env, timeout=180)
             receipts.append({"command": command, "exit_code": child.returncode})
             require(child.returncode == 0, f"SDK consumer failed: {command[0]}")
-        require(probe.is_file(), "Relocated SDK consumer did not produce its native frame report")
-        frame = json.loads(probe.read_text())
-        require(frame.get("schema_version") == 1 and frame.get("synthetic") is True,
-                "Invalid synthetic native SDK frame report")
-        module = Path(frame["module_path"]).resolve()
-        require(module.is_file() and module.is_relative_to(sdk), "Probe loaded a module outside the relocated SDK")
-        require(module.name.casefold().startswith(("vtkcommoncore-9.7.", "libvtkcommoncore-9.7.")),
-                "Probe address is not inside the loaded VTK CommonCore module")
-        relative = module.relative_to(sdk).as_posix()
-        module_checksum = digest(module)
-        require(manifest["files"].get(relative, {}).get("sha256") == module_checksum,
-                "Probe module differs from the SDK manifest")
-        result["native_frame_probe"] = {**frame, "module_relative_path": relative, "module_sha256": module_checksum}
         result["outcome"] = "passed"
     except BaseException:
         result["outcome"] = "failed"

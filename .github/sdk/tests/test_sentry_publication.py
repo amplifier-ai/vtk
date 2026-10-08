@@ -40,8 +40,7 @@ class PublicationContracts(unittest.TestCase):
             self.roots.append(root)
             artifacts = []
             for role, file_type, features in [("binary", "pe" if index == 0 else "dsym", ["symtab"]),
-                                               ("debug", "pdb" if index == 0 else "dsym", ["debug", "symtab"]),
-                                               ("sources", "sourcebundle", ["sources"])]:
+                                               ("debug", "pdb" if index == 0 else "dsym", ["debug", "symtab"])]:
                 path = root / role
                 path.write_bytes((platform + role).encode())
                 artifacts.append({"path": role, "sha256": self.module.digest(path),
@@ -56,21 +55,18 @@ class PublicationContracts(unittest.TestCase):
             manifest = {"platform": platform, "source_revision": REVISION, "source_tree": "b" * 40,
                         "vtk_version": "9.7.1", "source_prefix": prefix, "run_id": "123", "run_attempt": str(index+1),
                         "archives": archives, "modules": [{"debug_id": IDS[index], "arch": arch,
-                                                          "binaries": [artifacts[0]], "debug": artifacts[1],
-                                                          "sources": artifacts[2]}]}
+                                                          "binaries": [artifacts[0]], "debug": artifacts[1]}]}
             (root / "sentry-manifest.json").write_text(json.dumps(manifest))
             self.manifests.append(manifest)
         self.receipt = self.root / "publication.json"
         self.environment = patch.dict(os.environ, {"SENTRY_AUTH_TOKEN": TOKEN, "GITHUB_RUN_ID": "123"})
         self.environment.start()
         self.addCleanup(self.environment.stop)
-        self.files, self.specifications = self.module.upload_inputs(self.roots, self.manifests)
-
-    def provider_mapping(self, specification):
-        return {**specification, "repoId": specification["repositoryId"], "id": "mapping-id"}
+        self.files = self.module.upload_inputs(self.roots, self.manifests)
 
     def provider_release(self):
-        return {"version": RELEASE, "ref": REVISION, "projects": [{"slug": "unity-plugin"}]}
+        return {"version": RELEASE, "ref": REVISION, "dateReleased": "2026-10-08T07:00:00Z",
+                "projects": [{"slug": "unity-plugin"}]}
 
     def provider_commits(self):
         return [{"repository": {"name": "amplifier-ai/vtk"}, "id": REVISION}]
@@ -83,22 +79,6 @@ class PublicationContracts(unittest.TestCase):
     def call_publish(self):
         return self.module.publish(self.roots, REVISION, RELEASE, self.receipt, "pinned-cli",
                                    self.packages, self.runtime)
-
-    def test_mapping_plan_is_idempotent_and_binds_actual_windows_and_mac_prefixes(self):
-        rows = [self.provider_mapping(spec) for spec in self.specifications]
-        self.assertEqual(self.module.missing_mappings(rows, self.specifications), [])
-        self.assertEqual(self.module.missing_mappings([], self.specifications), self.specifications)
-        self.assertEqual([x['stackRoot'] for x in self.specifications],
-                         ['D:/a/vtk/vtk/', '/Users/runner/work/vtk/vtk/'])
-        self.assertTrue(all(x['sourceRoot'] == '' and x['repositoryId'] == '2823882' for x in self.specifications))
-
-    def test_mapping_conflicts_in_other_repository_branch_or_source_root_are_rejected(self):
-        for field, value in [('repoId', 'other-repository'), ('defaultBranch', 'develop'),
-                             ('sourceRoot', 'unexpected'), ('integrationId', 'other-integration')]:
-            row = self.provider_mapping(self.specifications[1])
-            row[field] = value
-            with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, 'conflicts'):
-                self.module.missing_mappings([row], self.specifications)
 
     def test_release_create_and_retry_bind_the_exact_vtk_repository_sha(self):
         method, body = self.module.release_plan(None, [], RELEASE, REVISION)
@@ -119,17 +99,23 @@ class PublicationContracts(unittest.TestCase):
             with self.subTest(existing=existing, commits=commits), self.assertRaises(RuntimeError):
                 self.module.release_plan(existing, commits, RELEASE, REVISION)
 
+    def test_unfinalized_release_is_not_qualified(self):
+        release = {**self.provider_release(), 'dateReleased': None}
+        with patch.object(self.module, 'api_request', return_value=(release, None)), \
+                self.assertRaisesRegex(RuntimeError, 'finalization'):
+            self.module.verify_release(TOKEN, 'release/', RELEASE, REVISION, finalized=True)
+
     def test_upload_readback_requires_exact_processed_bytes_format_architecture_and_features(self):
         valid = self.provider_files()
         with patch.object(self.module, 'api_list', return_value=valid):
-            self.assertEqual(len(self.module.verify_uploads(TOKEN, self.files)), 6)
-        for field, value in [('sha1', '0' * 40), ('size', -1), ('symbolType', 'pdb'),
+            self.assertEqual(len(self.module.verify_uploads(TOKEN, self.files)), 2)
+        for field, value in [('sha1', '0' * 40), ('size', -1), ('symbolType', 'elf'),
                              ('cpuName', 'unknown'), ('debugId', 'old-debug-id'), ('data', {'features': []})]:
             invalid = copy.deepcopy(valid)
             invalid[0][field] = value
             with self.subTest(field=field), patch.object(self.module, 'api_list', return_value=invalid), self.assertRaises(RuntimeError):
                 self.module.verify_uploads(TOKEN, self.files)
-        with patch.object(self.module, 'api_list', return_value=valid[:-1]), self.assertRaisesRegex(RuntimeError, 'sources'):
+        with patch.object(self.module, 'api_list', return_value=valid[:-1]), self.assertRaisesRegex(RuntimeError, 'debug'):
             self.module.verify_uploads(TOKEN, self.files)
 
     def test_archive_run_or_hash_mismatch_fails_before_http(self):
@@ -182,57 +168,42 @@ class PublicationContracts(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs['env']['SENTRY_AUTH_TOKEN'], TOKEN)
             self.assertEqual(command[1:3], ['--url', 'https://sentry.io'])
 
-    def test_success_creates_only_missing_mappings_uses_all_ids_and_records_verified_receipt(self):
-        mappings = []
+    def test_success_publishes_exact_release_and_only_debug_files(self):
         remote_release = None
         calls = []
         def request(method, path, token, body=None, allow_missing=False):
             nonlocal remote_release
             calls.append((method, path, body))
-            if method == 'POST' and path == self.module.MAPPINGS:
-                mappings.append(self.provider_mapping(body))
-            elif method == 'POST':
+            if method == 'POST':
                 remote_release = self.provider_release()
             return remote_release, None
         def listing(path, token):
-            if path.startswith(self.module.MAPPINGS): return mappings
-            if 'commits/' in path: return self.provider_commits()
+            if 'commits/' in path:
+                return self.provider_commits()
             return self.provider_files()
         with patch.object(self.module, 'verify', side_effect=self.manifests) as verify, \
                 patch.object(self.module, 'run_cli', return_value='sentry-cli 3.8.0') as cli, \
                 patch.object(self.module, 'api_request', side_effect=request), patch.object(self.module, 'api_list', side_effect=listing):
             result = self.call_publish()
         self.assertEqual(verify.call_count, 2)
-        self.assertEqual(len([call for call in calls if call[0] == 'POST' and call[1] == self.module.MAPPINGS]), 2)
-        upload = cli.call_args_list[-1].args[1]
+        self.assertFalse(any('code-mappings' in call[1] for call in calls))
+        upload = cli.call_args_list[-2].args[1]
+        self.assertEqual(cli.call_args_list[-1].args[1], ["releases", "finalize", "--org", "amplifier-ai", "--project", "unity-plugin", RELEASE])
         self.assertIn('--wait', upload)
         self.assertIn('--require-all', upload)
+        self.assertNotIn('--include-sources', upload)
         self.assertEqual([upload[i+1] for i, word in enumerate(upload) if word == '--id'], IDS)
-        self.assertEqual(set(upload[-6:]), set(map(str, self.files)))
+        self.assertEqual(set(upload[-2:]), set(map(str, self.files)))
         stored = self.receipt.read_text()
         self.assertNotIn(TOKEN, stored)
         self.assertEqual(json.loads(stored)['outcome'], 'passed')
-        self.assertEqual(len(result['files']), 6)
-
-    def test_conflicting_mapping_stops_before_any_provider_write_or_upload(self):
-        conflicting = self.provider_mapping(self.specifications[1])
-        conflicting['repoId'] = 'other'
-        with patch.object(self.module, 'verify', side_effect=self.manifests), \
-                patch.object(self.module, 'run_cli', return_value='sentry-cli 3.8.0') as cli, \
-                patch.object(self.module, 'api_request') as request, patch.object(self.module, 'api_list', return_value=[conflicting]):
-            with self.assertRaisesRegex(RuntimeError, 'conflicts'):
-                self.call_publish()
-            request.assert_not_called()
-            self.assertEqual(cli.call_count, 1)
-            self.assertFalse(self.receipt.exists())
+        self.assertEqual(len(result['files']), 2)
 
     def test_missing_readback_preserves_existing_receipt(self):
         prior = {'repository': 'amplifier-ai/vtk', 'organization': 'amplifier-ai', 'project': 'unity-plugin',
                  'release': RELEASE, 'source_revision': REVISION, 'outcome': 'old-receipt'}
         self.receipt.write_text(json.dumps(prior))
-        mappings = [self.provider_mapping(spec) for spec in self.specifications]
         def listing(path, token):
-            if path.startswith(self.module.MAPPINGS): return mappings
             if 'commits/' in path: return self.provider_commits()
             return []
         with patch.object(self.module, 'verify', side_effect=self.manifests), \

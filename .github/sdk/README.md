@@ -148,65 +148,37 @@ SDK publication does not change Unity's plugin, packaged libraries or dependency
 pins. Switching these consumers requires Denis's explicit permission after the
 SDK is ready. Existing Unity runtime inputs remain the reference until then.
 
-## Native Sentry symbols and source context
+## Native Sentry releases and debug files
 
-`native-sdk.cmake` adds debug generation to the existing optimized Release build:
-MSVC embeds object debug information with `/Z7` and emits full linker PDBs;
-Apple Clang emits DWARF with `-g`. The ABI, module selection and optimization
-remain the SDK profile's existing values. No second VTK build supplies symbols.
+`native-sdk.cmake` generates PDB/dSYM information from the existing optimized
+Release build. MSVC uses `/Z7` and full linker PDBs; Apple Clang uses `-g`.
+The ABI, module selection and optimization stay unchanged.
 
-`sentry_symbols.py` intersects CMake File API native targets with both final
-package inventories. It checks each producer module's binary/debug identity and
-architecture, including internal ThirdParty libraries and native C# wrappers.
-Mac dSYMs are generated while the build objects still exist. Packaged libraries
-edited or signed for relocation must retain matching debug and code IDs.
-External supplier modules are recorded separately; this pipeline does not invent
-missing supplier debug information or claim their source-level coverage.
+`sentry_symbols.py` stages matching PDB/dSYM files for native modules shipped
+in the SDK and C# runtime, including native wrappers and bundled VTK dependencies.
+It checks binary/debug IDs, architecture and package hashes. Mac dSYMs are
+created before relocation tests remove build inputs. External supplier modules
+are recorded separately; missing supplier symbols are not fabricated.
 
-Source bundles are generated on the original builder, before relocation tests
-remove or hide its inputs. Referenced VTK source and generated files must appear
-with their exact bytes. Common/Core's generated `.cxx.inc` template instantiation
-fragments are C++ source inputs and follow the same required coverage and byte
-checks. Xdmf's compiled `.tpp` template definitions are required headers too.
-Vendored Eigen's extensionless module headers, such as `Core` and `Dense`,
-are required source files under its tracked include directory. The tracked
-octree facade and libxml2's two compiled C include fragments follow those same
-checks; arbitrary extensionless files and NASM fragments are not exempted.
-Tracked source
-links use the immutable VTK commit; generated files are
-embedded without a fictitious GitHub path. The frozen
-manifest records identities, source coverage, compiler settings and package
-digests. Individual compiler/runtime-generated assembly files without a supported
-source-language extension are outside the source-context coverage boundary.
+PRs prepare symbols offline. The master-only publisher creates a VTK Sentry
+release with the exact `amplifier-ai/vtk` commit, uploads PDB/dSYM files to
+`amplifier-ai/unity-plugin`, waits for processing, finalizes the release and records the upload readback.
+SDK and C# releases retain their existing build and package qualification gates.
+No source bundles are collected and no synthetic events are sent.
 
-`IO/Import/mtlsyntax.inl` keeps the checked-in generated MTL parser's code and
-tables. Obsolete Ragel `#line` directives are removed so compiler debug records
-name that materialized source and its physical lines, rather than nonexistent
-historical `vtk3` files or `NONE`. The source-context regression guards that
-boundary; parser regeneration is outside this publication workflow.
+GitHub is already connected to Sentry. Configure code mappings in that integration
+for project `unity-plugin`, repository `amplifier-ai/vtk`, source root empty:
 
-The CLI installer pins Sentry CLI 3.8.0 and verifies its platform asset SHA256
-before execution. PRs perform only offline preparation/checks and retain native
-debug/source artifacts for seven days. `.sdk-sentry/` and `*.src.zip` are temporary
-build output and must never enter Git. No auth token is supplied to PR builders.
+| Producer | Stack trace root | Default branch |
+| --- | --- | --- |
+| Windows | `D:/a/vtk/vtk/` | `master` |
+| macOS | `/Users/runner/work/vtk/vtk/` | `master` |
 
-`publish_sentry.py` owns authenticated publication to `amplifier-ai/unity-plugin`
-after master platform and package checks. It binds the SDK's own release to the
-`amplifier-ai/vtk` source commit, configures VTK source-root mappings without
-replacing VR mappings, waits for debug processing, and verifies exact debug IDs
-and source/debug files through the Sentry API. Its receipt is included in the SDK
-release and retained as an Actions artifact. `qualify_sentry_frame.py` then sends
-two clearly labeled native INFO events in `ci-symbol-qualification`, using actual
-addresses and module hashes recorded by the relocated SDK consumer. Sentry must
-return the function, file, line, matching source context and immutable Git link
-before a GitHub release is created. Event IDs are persisted before sending;
-retries poll those IDs and do not blindly resend uncertain submissions.
-These synthetic frames qualify symbol/source processing, not an actual Unity
-crash or end-to-end crash capture.
-
-VTK owns its native module symbols and sources. VR owns the plugin's symbols and
-its application release; these SDK references do not automatically set the VR
-event's commit metadata or activate a new SDK in Unity.
+Sentry's project setting **Enable SCM Source Context** fetches tracked source
+from GitHub. Generated build files have no repository counterpart. Mapping
+settings are maintained in Sentry, not changed by CI. VR owns plugin symbols
+and its application release separately. Publishing VTK does not activate new
+SDK inputs in Unity.
 
 ## Packaging tests
 

@@ -17,8 +17,8 @@ SENTRY_CLI = os.environ.get("SENTRY_CLI") or shutil.which("sentry-cli")
 SUPPORTED = sys.platform in ("win32", "darwin")
 COMPILER = shutil.which("cl" if sys.platform == "win32" else "clang++")
 NATIVE_SOURCES = {
-    "owned": ("owned.c", "owned.cxx", "html5ent.inc", "iso8859x.inc"),
-    "wrapper": ("wrapper.cxx", "fragment.cxx.inc", "Core", "template.tpp", "octree"),
+    "owned": ("owned.c", "owned.cxx"),
+    "wrapper": ("wrapper.cxx",),
     "helper": ("helper.cxx",),
     "vendor": ("vendor.c",),
     "installed_tool": ("tool.c",),
@@ -151,7 +151,7 @@ class NativeSymbolProfile(unittest.TestCase):
                 self.assertIn("debug", report["features"].split(", "))
 
     @unittest.skipUnless(SENTRY_CLI, "Set SENTRY_CLI to exercise complete source staging")
-    def test_symbol_collector_freezes_installed_modules_wrappers_generated_sources_and_ids(self):
+    def test_symbol_collector_stages_only_matching_debug_files_for_all_packaged_modules(self):
         sys.path.insert(0, str(SDK))
         self.addCleanup(sys.path.remove, str(SDK))
         import sentry_symbols as collector
@@ -174,18 +174,11 @@ class NativeSymbolProfile(unittest.TestCase):
             manifest = collector.prepare(self.sdk, runtime, self.build, self.source, self.root / "symbols",
                                          platform, SENTRY_CLI, packages)
         self.assertEqual({row['target'] for row in manifest['modules']}, set(NATIVE_SOURCES))
-        self.assertTrue(any(row['kind'] == 'generated' for module in manifest['modules']
-                            for row in module['source_coverage']))
-        self.assertTrue(any(row['kind'] == 'generated' and row['path'].endswith('fragment.cxx.inc')
-                            for module in manifest['modules'] for row in module['source_coverage']))
-        self.assertTrue(any(row['kind'] == 'tracked' and row['path'] == 'ThirdParty/eigen/vtkeigen/eigen/Core'
-                            for module in manifest['modules'] for row in module['source_coverage']))
-        self.assertTrue(any(row['kind'] == 'tracked' and row['path'] == 'template.tpp'
-                            for module in manifest['modules'] for row in module['source_coverage']))
-        for path in ('ThirdParty/libxml2/vtklibxml2/html5ent.inc',
-                     'ThirdParty/libxml2/vtklibxml2/iso8859x.inc', 'Utilities/octree/octree/octree'):
-            self.assertTrue(any(row['kind'] == 'tracked' and row['path'] == path
-                                for module in manifest['modules'] for row in module['source_coverage']))
+        self.assertFalse((self.root / "symbols" / "sources").exists())
+        for module in manifest['modules']:
+            self.assertNotIn('sources', module)
+            self.assertNotIn('source_coverage', module)
+            self.assertIn('debug', module['debug']['features'])
         self.assertEqual(manifest, collector.verify(self.root / "symbols", revision, SENTRY_CLI))
 
 

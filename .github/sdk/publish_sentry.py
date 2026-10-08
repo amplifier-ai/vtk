@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish frozen VTK symbols after package, source and provider readback checks."""
+"""Create the VTK Sentry release and upload matching PDB/dSYM files."""
 import argparse
 import hashlib
 import json
@@ -19,13 +19,7 @@ from sentry_symbols import verify
 ORGANIZATION = "amplifier-ai"
 PROJECT = "unity-plugin"
 REPOSITORY = "amplifier-ai/vtk"
-PROJECT_ID = "4509486293712896"
-REPOSITORY_ID = "2823882"
-INTEGRATION_ID = "284294"
 API_ORIGIN = "https://sentry.io/api/0/"
-MAPPINGS = f"organizations/{ORGANIZATION}/code-mappings/"
-MAPPING_QUERY = MAPPINGS + "?" + urlencode({"project": PROJECT_ID, "integrationId": INTEGRATION_ID, "per_page": 100})
-
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, request, response, code, message, headers, new_url):
@@ -102,60 +96,33 @@ def validate_archives(manifests, packages, runtime_packages):
 
 
 def upload_inputs(roots, manifests):
-    files, specifications = {}, []
+    files = {}
     for root, manifest in zip(roots, manifests):
         root = Path(root).resolve()
-        prefix = manifest["source_prefix"].replace("\\", "/").rstrip("/") + "/"
-        require(prefix != "/" and not any(c.isspace() for c in prefix), "Invalid build source prefix")
-        specifications.append({"integrationId": INTEGRATION_ID, "repositoryId": REPOSITORY_ID,
-                               "projectId": PROJECT_ID, "stackRoot": prefix,
-                               "sourceRoot": "", "defaultBranch": "master"})
         for module in manifest["modules"]:
-            for role, artifact in [("binary", a) for a in module["binaries"]] + [
-                    ("debug", module["debug"]), ("sources", module["sources"])]:
-                relative = PurePosixPath(artifact["path"])
-                require(not relative.is_absolute() and ".." not in relative.parts,
-                        "Symbol artifact leaves the verified staging root")
-                path = root / str(relative)
-                require(path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(root),
-                        "Symbol artifact is not a regular staged file")
-                require(digest(path) == artifact["sha256"], "Symbol artifact bytes changed")
-                expected_type = "sourcebundle" if role == "sources" else (
-                    "pdb" if role == "debug" and manifest["platform"] == "win-x64" else
-                    "pe" if manifest["platform"] == "win-x64" else "macho")
-                cli_type = "dsym" if expected_type == "macho" else expected_type
-                require(artifact["type"] == cli_type, "Unexpected staged symbol format")
-                features = set(artifact["features"])
-                require(role not in ("debug", "sources") or role in features,
-                        "Missing staged debug/source feature")
-                with path.open("rb") as stream:
-                    sha1 = hashlib.file_digest(stream, "sha1").hexdigest()
-                expected = {"debug_id": module["debug_id"].lower(), "arch": module["arch"],
-                            "type": expected_type, "features": sorted(features),
-                            "sha1": sha1,
-                            "size": path.stat().st_size, "role": role}
-                if path in files:
-                    require(files[path] == expected, "Conflicting staged symbol declarations")
-                files[path] = expected
-    require(files and len({item["stackRoot"] for item in specifications}) == 2,
-            "Expected two distinct source mappings and nonempty artifacts")
-    return files, specifications
-
-
-def missing_mappings(existing, specifications):
-    missing = []
-    for expected in specifications:
-        same_root = [row for row in existing if str(row.get("projectId")) == PROJECT_ID
-                     and row.get("stackRoot") == expected["stackRoot"]]
-        for row in same_root:
-            require(str(row.get("repoId")) == REPOSITORY_ID
-                    and str(row.get("integrationId")) == INTEGRATION_ID
-                    and row.get("sourceRoot") == expected["sourceRoot"]
-                    and row.get("defaultBranch") == expected["defaultBranch"],
-                    "Existing code mapping conflicts with the VTK build source root")
-        if not same_root:
-            missing.append(expected)
-    return missing
+            artifact = module["debug"]
+            relative = PurePosixPath(artifact["path"])
+            require(not relative.is_absolute() and ".." not in relative.parts,
+                    "Symbol artifact leaves the verified staging root")
+            path = root / str(relative)
+            require(path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(root),
+                    "Symbol artifact is not a regular staged file")
+            require(digest(path) == artifact["sha256"], "Symbol artifact bytes changed")
+            expected_type = "pdb" if manifest["platform"] == "win-x64" else "macho"
+            require(artifact["type"] == ("pdb" if expected_type == "pdb" else "dsym"),
+                    "Unexpected staged symbol format")
+            features = set(artifact["features"])
+            require("debug" in features, "Missing native debug information")
+            with path.open("rb") as stream:
+                sha1 = hashlib.file_digest(stream, "sha1").hexdigest()
+            expected = {"debug_id": module["debug_id"].lower(), "arch": module["arch"],
+                        "type": expected_type, "features": sorted(features),
+                        "sha1": sha1, "size": path.stat().st_size, "role": "debug"}
+            if path in files:
+                require(files[path] == expected, "Conflicting staged symbol declarations")
+            files[path] = expected
+    require(files, "Expected matching PDB/dSYM artifacts")
+    return files
 
 
 def repository_name(row):
@@ -183,11 +150,12 @@ def release_plan(existing, commits, release, revision):
     return None, None
 
 
-def verify_release(token, path, release, revision):
+def verify_release(token, path, release, revision, finalized=False):
     final, _ = api_request("GET", path, token)
     require(final.get("version") == release and final.get("ref") == revision
             and PROJECT in {row.get("slug") for row in final.get("projects", [])},
             "Sentry did not confirm the VTK release identity")
+    require(not finalized or final.get("dateReleased"), "Sentry did not confirm release finalization")
     commits = api_list(path + "commits/?per_page=100", token)
     require(commits and all(repository_name(row) == REPOSITORY and row.get("id") == revision for row in commits),
             "Sentry did not confirm the exact VTK commit")
@@ -244,16 +212,12 @@ def publish(roots, revision, release, receipt, cli, packages, runtime_packages):
     require(len({(item["vtk_version"], item["source_tree"]) for item in manifests}) == 1,
             "Platform manifests identify different VTK sources")
     validate_archives(manifests, packages, runtime_packages)
-    files, specifications = upload_inputs(roots, manifests)
-    missing = missing_mappings(api_list(MAPPING_QUERY, token), specifications)
+    files = upload_inputs(roots, manifests)
     collection = f"organizations/{ORGANIZATION}/releases/"
     release_path = collection + quote(release, safe="") + "/"
     existing, _ = api_request("GET", release_path, token, allow_missing=True)
     commits = api_list(release_path + "commits/?per_page=100", token) if existing else []
     method, body = release_plan(existing, commits, release, revision)
-    for mapping in missing:
-        api_request("POST", MAPPINGS, token, mapping)
-    require(not missing_mappings(api_list(MAPPING_QUERY, token), specifications), "Sentry did not confirm VTK mappings")
     if method:
         api_request(method, collection if method == "POST" else release_path, token, body)
     verify_release(token, release_path, release, revision)
@@ -262,7 +226,8 @@ def publish(roots, revision, release, receipt, cli, packages, runtime_packages):
         arguments.extend(["--id", debug_id])
     run_cli(cli, [*arguments, *sorted(map(str, files))], token)
     confirmed = verify_uploads(token, files)
-    verify_release(token, release_path, release, revision)
+    run_cli(cli, ["releases", "finalize", "--org", ORGANIZATION, "--project", PROJECT, release], token)
+    verify_release(token, release_path, release, revision, finalized=True)
     result = {"schema_version": 1, "repository": REPOSITORY, "organization": ORGANIZATION,
               "project": PROJECT, "release": release, "source_revision": revision,
               "run_id": os.environ["GITHUB_RUN_ID"], "outcome": "passed", "files": confirmed,

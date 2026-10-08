@@ -184,7 +184,6 @@ jobs:
           SENTRY_CLI: ${{ steps.sentry_cli.outputs.path }}
         run: |
           python -m unittest discover -s .github/sdk/tests -p test_symbol_profile.py -v
-          python -m unittest discover -s .github/sdk/tests -p test_native_frame_report.py -v
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
@@ -364,7 +363,7 @@ jobs:
               command.extend(['--minimum-macos', '26.0'])
           subprocess.run(command, check=True)
 
-      - name: Freeze matching native symbols and source context
+      - name: Prepare matching PDB and dSYM files
         shell: bash
         env:
           SENTRY_CLI: ${{ steps.sentry_cli.outputs.path }}
@@ -456,7 +455,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload verified native debug files and source bundles
+      - name: Upload verified native debug files
         uses: actions/upload-artifact@v4
         with:
           name: vtk-sentry-${{ matrix.platform }}

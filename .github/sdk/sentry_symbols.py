@@ -1,32 +1,17 @@
 #!/usr/bin/env python3
-"""Freeze matching native VTK binaries, debug information and exact source context."""
+"""Stage matching PDB/dSYM files from the shipped VTK Release build."""
 import argparse
-import hashlib
-import io
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
-import tempfile
-from urllib.parse import quote
-import zipfile
 
 from package_sdk import cache_values, digest, inventory, require, safe_name, validate_manifest
 from package_csharp import validate_runtime_manifest
 
 REPOSITORY = "amplifier-ai/vtk"
-SOURCE_EXTENSIONS = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".txx", ".tpp", ".inl", ".m", ".mm"}
-
-
-def supported_source(path):
-    # Common/Core generates C++ instantiation fragments included by bulk sources.
-    # Vendored Eigen also uses extensionless C++ module headers (Core, Dense, etc.).
-    return (path.suffix.lower() in SOURCE_EXTENSIONS or path.name.lower().endswith(".cxx.inc")
-            or not path.suffix and path.parent.as_posix() == "ThirdParty/eigen/vtkeigen/eigen"
-            or path.as_posix() in {"Utilities/octree/octree/octree",
-                "ThirdParty/libxml2/vtklibxml2/html5ent.inc", "ThirdParty/libxml2/vtklibxml2/iso8859x.inc"})
 
 
 def cli_run(cli, arguments, environment=None):
@@ -58,93 +43,6 @@ def require_pair(binary, debug):
 
 def normalized(path):
     return str(path).replace("\\", "/").rstrip("/")
-
-
-def source_location(original, source, build):
-    # Clang may preserve /var while the same macOS tree resolves to /private/var.
-    value = normalized(Path(original).resolve()) if Path(original).is_absolute() else normalized(original)
-    for kind, root in (("generated", build), ("tracked", source)):
-        prefix = normalized(Path(root).resolve())
-        if value.startswith(prefix + "/"):
-            relative = value[len(prefix) + 1:]
-            require(".." not in Path(relative).parts, "Source path leaves its declared root")
-            return kind, relative, Path(root) / relative
-    return None
-
-
-def read_bundle(path):
-    with Path(path).open("rb") as stream:
-        require(stream.read(8) == b"SYSB\x02\x00\x00\x00", "Invalid source bundle header")
-    with zipfile.ZipFile(path) as archive:
-        for entry in archive.namelist():
-            safe_name(entry)
-        return json.loads(archive.read("manifest.json"))
-
-
-def verify_sources(bundle, source, build, debug_id):
-    manifest = read_bundle(bundle)
-    require(manifest.get("debug_id", "").lower() == debug_id.lower(), "Source/debug ID mismatch")
-    covered = []
-    with zipfile.ZipFile(bundle) as archive:
-        for entry, metadata in manifest["files"].items():
-            if metadata.get("type") != "source":
-                continue
-            location = source_location(metadata.get("path", ""), source, build)
-            if location is None:
-                continue
-            kind, relative, original = location
-            require(supported_source(Path(relative)) and original.is_file(),
-                    f"Missing or unsupported VTK source: {relative}")
-            contents = archive.read(entry)
-            require(hashlib.sha256(contents).hexdigest() == digest(original),
-                    f"Bundled source bytes differ from compiled inputs: {relative}")
-            covered.append({"kind": kind, "path": relative, "original_path": metadata["path"],
-                            "sha256": digest(original)})
-    require(covered, "Bundle contains no verified VTK source")
-    return sorted(covered, key=lambda item: (item["kind"], item["path"]))
-
-
-def verify_referenced_sources(bundle, listing, source, build):
-    files = read_bundle(bundle)["files"]
-    included = {normalized(row.get("path", "")) for row in files.values()}
-    for original in re.findall(r"^  (\S.*)$", listing, re.MULTILINE):
-        location = source_location(original, source, build)
-        if location and supported_source(Path(location[1])):
-            require(normalized(original) in included, f"Referenced VTK source missing from bundle: {location[1]}")
-
-
-def source_url(revision, relative):
-    return f"https://raw.githubusercontent.com/{REPOSITORY}/{revision}/" + quote(relative, safe="/")
-
-
-def verify_frozen_sources(bundle, coverage, revision):
-    files = read_bundle(bundle)["files"]
-    entries = {row.get("path"): (entry, row) for entry, row in files.items()}
-    with zipfile.ZipFile(bundle) as archive:
-        for row in coverage:
-            require(row["original_path"] in entries, "Frozen source is absent")
-            entry, metadata = entries[row["original_path"]]
-            require(hashlib.sha256(archive.read(entry)).hexdigest() == row["sha256"], "Frozen source digest mismatch")
-            expected_url = source_url(revision, row["path"]) if row["kind"] == "tracked" else None
-            require(metadata.get("url") == expected_url, "Frozen source revision URL mismatch")
-
-
-def add_source_urls(bundle, source, build, revision):
-    require(re.fullmatch(r"[a-f0-9]{40}", revision), "Invalid source revision")
-    manifest = read_bundle(bundle)
-    with zipfile.ZipFile(bundle) as archive:
-        contents = {name: archive.read(name) for name in archive.namelist()}
-    for metadata in manifest["files"].values():
-        location = source_location(metadata.get("path", ""), source, build)
-        if location and location[0] == "tracked":
-            metadata["url"] = source_url(revision, location[1])
-    contents["manifest.json"] = json.dumps(manifest).encode()
-    output = io.BytesIO()
-    output.write(b"SYSB\x02\x00\x00\x00")
-    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name, data in contents.items():
-            archive.writestr(name, data)
-    Path(bundle).write_bytes(output.getvalue())
 
 
 def build_targets(build):
@@ -191,7 +89,6 @@ def prepare(sdk, runtime, build, source, output, platform, cli, packages):
     require(sdk_manifest["source_tree"] == runtime_manifest["source_tree"], "Package source trees differ")
     require(sdk_manifest["platform"] == runtime_manifest["platform"] == platform, "Package platform mismatch")
     targets = build_targets(build)
-    tracked = set(subprocess.check_output(["git", "-C", str(source), "ls-files"], text=True).splitlines())
     packaged = {}
     for product, directory, manifest in (("sdk", sdk, sdk_manifest), ("runtime", runtime, runtime_manifest)):
         for relative, metadata in manifest["files"].items():
@@ -234,26 +131,11 @@ def prepare(sdk, runtime, build, source, output, platform, cli, packages):
             final = debug_info(cli, file)
             require_pair(final, debug_data)
             require(final["code_id"] == binary["code_id"], "Packaged native code identity changed")
-            staged_binaries.append({"product": product, "package_path": relative, **stage_file(file, output, "binary"), **final})
-        with tempfile.TemporaryDirectory(dir=output, prefix="source-staging-") as temporary:
-            temporary = Path(temporary)
-            properties = temporary / "sentry.properties"
-            properties.write_text("dif.max_item_size=67108864\n")
-            environment = {**os.environ, "SENTRY_PROPERTIES": str(properties)}
-            cli_run(cli, ["debug-files", "bundle-sources", "--output", temporary, debug], environment)
-            bundles = list(temporary.glob("*.src.zip"))
-            require(len(bundles) == 1, f"Missing source bundle: {name}")
-            coverage = verify_sources(bundles[0], source, build, binary["debug_id"])
-            verify_referenced_sources(bundles[0], cli_run(cli, ["debug-files", "print-sources", debug]), source, build)
-            require(all(row["kind"] != "tracked" or row["path"] in tracked for row in coverage),
-                    "Bundled repository source is not tracked by the compiled revision")
-            add_source_urls(bundles[0], source, build, revision)
-            bundled = debug_info(cli, bundles[0])
-            require(bundled["debug_id"] == binary["debug_id"] and "sources" in bundled["features"], "Source bundle identity mismatch")
-            modules.append({"name": name, "target": target, "debug_id": binary["debug_id"],
-                            "arch": binary["arch"], "code_id": binary["code_id"],
-                            "binaries": staged_binaries, "debug": {**stage_file(debug, output, "debug"), **debug_data},
-                            "sources": {**stage_file(bundles[0], output, "sources"), **bundled}, "source_coverage": coverage})
+            staged_binaries.append({"product": product, "package_path": relative, "sha256": digest(file), **final})
+        modules.append({"name": name, "target": target, "debug_id": binary["debug_id"],
+                        "arch": binary["arch"], "code_id": binary["code_id"],
+                        "binaries": staged_binaries,
+                        "debug": {**stage_file(debug, output, "debug"), **debug_data}})
         if platform == "osx-arm64":
             shutil.rmtree(dsym)
     require(modules, "No packaged producer modules were recorded")
@@ -273,7 +155,7 @@ def prepare(sdk, runtime, build, source, output, platform, cli, packages):
             match = re.search(rf'set\({key} "([^"]+)"\)', compiler_file.read_text())
             require(match is not None, f"Missing compiler identity: {key}")
             compiler_settings[key] = match.group(1)
-    manifest = {"schema_version": 1, "repository": REPOSITORY, "source_revision": revision,
+    manifest = {"schema_version": 2, "repository": REPOSITORY, "source_revision": revision,
                 "source_tree": sdk_manifest["source_tree"], "vtk_version": sdk_manifest["vtk_version"],
                 "platform": platform, "configuration": sdk_manifest["configuration"],
                 "source_prefix": normalized(source) + "/", "build_prefix": normalized(build) + "/",
@@ -296,17 +178,17 @@ def verify(root, revision, cli):
     actual.pop("sentry-manifest.json", None)
     require(actual == manifest["artifacts"], "Symbol staging inventory or hashes changed")
     require(manifest["platform"] in ("win-x64", "osx-arm64") and manifest["modules"], "Missing platform/module inventory")
+    require(manifest.get("schema_version") == 2, "Unsupported symbol manifest schema")
     for module in manifest["modules"]:
-        require(module["source_coverage"], "Missing verified source coverage")
-        artifacts = [*module["binaries"], module["debug"], module["sources"]]
-        for artifact in artifacts:
-            safe_name(artifact["path"])
-            require(actual.get(artifact["path"]) == {"sha256": artifact["sha256"]}, "Artifact reference/digest mismatch")
-            info = debug_info(cli, root / artifact["path"])
-            require(info["debug_id"] == module["debug_id"] and info["arch"] == module["arch"], "Staged debug identity changed")
-        require("debug" in debug_info(cli, root / module["debug"]["path"])["features"], "Missing native debug information")
-        require("sources" in debug_info(cli, root / module["sources"]["path"])["features"], "Missing source context")
-        verify_frozen_sources(root / module["sources"]["path"], module["source_coverage"], revision)
+        artifact = module["debug"]
+        safe_name(artifact["path"])
+        require(actual.get(artifact["path"]) == {"sha256": artifact["sha256"]}, "Artifact reference/digest mismatch")
+        info = debug_info(cli, root / artifact["path"])
+        require(info["debug_id"] == module["debug_id"] and info["arch"] == module["arch"], "Staged debug identity changed")
+        require("debug" in info["features"], "Missing native debug information")
+        for binary in module["binaries"]:
+            require_pair(binary, info)
+            require(binary["code_id"] == module["code_id"], "Packaged native code identity changed")
     return manifest
 
 
